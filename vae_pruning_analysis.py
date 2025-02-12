@@ -12,6 +12,7 @@ import pandas as pd
 from copy import deepcopy
 from pathlib import Path
 import numpy as np
+import matplotlib.pyplot as plt
 
 def analyze_weight_distribution(model):
     """Analyze weight distribution and sparsity statistics"""
@@ -94,7 +95,33 @@ def process_image(model, image_path, output_path, device):
         latent = model.encode(x)
         y = model.decode(latent)
         
+    # Save output
     save_image(y * 0.5 + 0.5, output_path)
+    
+    # Create comparison plot
+    plt.figure(figsize=(10, 5))
+    
+    # Original image
+    plt.subplot(1, 2, 1)
+    original_img = x[0].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
+    plt.imshow(original_img)
+    plt.title("Original Image")
+    plt.axis('off')
+    
+    # Reconstructed image
+    plt.subplot(1, 2, 2)
+    reconstructed_img = y[0].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
+    plt.imshow(reconstructed_img)
+    plt.title(f"Reconstructed (Sparsity: {model.sparsity if hasattr(model, 'sparsity') else 0:.1%})")
+    plt.axis('off')
+    
+    plt.tight_layout()
+    try:
+        plt.show()
+    except Exception as e:
+        print(f"Could not display plot: {e}")
+    plt.close()
+    
     return y
 
 def main():
