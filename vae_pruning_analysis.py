@@ -61,8 +61,7 @@ def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
             threshold = np.percentile(
                 np.abs(tensor_cpu), 
                 sparsity * 100,
-                method='lower',
-                interpolation='lower'
+                method='lower'
             )
             
             # Create mask on GPU if available
