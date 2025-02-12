@@ -135,12 +135,6 @@ def main():
     # Move model to device before pruning
     model = model.to(device).eval()
     
-    # Warm up CUDA and Triton kernels
-    if torch.cuda.is_available():
-        with torch.no_grad():
-            dummy_input = torch.randn(1, 3, 512, 512).to(device)
-            _ = model(dummy_input)
-    
     # Create output directories
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
