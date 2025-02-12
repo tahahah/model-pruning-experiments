@@ -9,8 +9,9 @@ from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.apps.utils.image import DMCrop
 import os
 import pandas as pd
-import copy
+from copy import deepcopy
 from pathlib import Path
+import numpy as np
 
 def analyze_weight_distribution(model):
     """Analyze weight distribution and sparsity statistics"""
@@ -41,16 +42,41 @@ def analyze_weight_distribution(model):
     print(df.sort_values('Sparsity(%)', ascending=False).head(10).to_string())
     return total_params, total_nonzero
 
-def fine_grained_prune(model, sparsity):
-    """Magnitude-based fine-grained pruning"""
-    model = copy.deepcopy(model)
-    for name, module in model.named_modules():
+def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
+    """Prune model weights using magnitude-based pruning"""
+    # Create copy of original model
+    pruned_model = deepcopy(model)
+    
+    # Iterate through all model parameters
+    for name, module in pruned_model.named_modules():
         if isinstance(module, (nn.Linear, nn.Conv2d)):
+            # Process each layer separately to avoid memory issues
             tensor = module.weight.data
-            threshold = torch.quantile(tensor.abs(), sparsity)
-            mask = torch.abs(tensor) > threshold
-            module.weight.data *= mask
-    return model
+            
+            # Convert to CPU for memory-efficient calculation
+            tensor_cpu = tensor.cpu().numpy().flatten()
+            
+            # Calculate threshold using numpy's percentile with limited memory
+            threshold = np.percentile(
+                np.abs(tensor_cpu), 
+                sparsity * 100,
+                method='lower',
+                interpolation='lower'
+            )
+            
+            # Create mask on GPU if available
+            mask = torch.tensor(np.abs(tensor_cpu) > threshold, device=tensor.device)
+            mask = mask.reshape(tensor.shape)
+            
+            # Apply mask
+            module.weight.data = tensor * mask.float()
+            
+            # Clean up temporary variables
+            del tensor_cpu, mask
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    return pruned_model
 
 def process_image(model, image_path, output_path, device):
     """Process a single image through the VAE"""
@@ -72,16 +98,25 @@ def process_image(model, image_path, output_path, device):
     return y
 
 def main():
+    # Load pretrained DC-AE model
+    print("Loading DC-AE model...")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Load model with CUDA-optimized configuration
+    model = DCAE_HF.from_pretrained("mit-han-lab/dc-ae-f64c128-in-1.0", use_cuda=True)
+    
+    # Move model to device before pruning
+    model = model.to(device).eval()
+    
+    # Warm up CUDA and Triton kernels
+    if torch.cuda.is_available():
+        with torch.no_grad():
+            dummy_input = torch.randn(1, 3, 512, 512).to(device)
+            _ = model(dummy_input)
+    
     # Create output directories
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
-    
-    # Load model
-    print("Loading DC-AE model...")
-    # Force CPU usage to avoid Triton CUDA kernel issues
-    device = "cpu"
-    model = DCAE_HF.from_pretrained("mit-han-lab/dc-ae-f64c128-in-1.0")
-    model = model.to(device).eval()
     
     # Analyze original model
     print("\nAnalyzing original model...")
