@@ -17,8 +17,8 @@ sys.path.append(ROOT_DIR)
 
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
-from dcaecore.trainer import DCAETrainer, DCAERunConfig
-from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
+from trainer import DCAETrainer, DCAERunConfig
+from pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 
 def set_random_seed(seed: int):
     """Set random seed for reproducibility."""

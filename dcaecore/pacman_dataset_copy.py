@@ -72,7 +72,7 @@ class SimplePacmanDataset(IterableDataset):
 
 class SimplePacmanDatasetProvider(BaseDataProvider):
     def __init__(self, cfg: PacmanDatasetProviderConfig):
-        super().__init__()
+        super().__init__(cfg)  # Pass cfg to BaseDataProvider
         self.train_dataset = SimplePacmanDataset(cfg)
         self.test_dataset = None
 
