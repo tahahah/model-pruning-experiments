@@ -11,6 +11,8 @@ from typing import Any, Dict
 import os
 from tqdm import tqdm
 import torchvision
+from contextlib import nullcontext
+import logging
 
 try:
     import wandb
@@ -60,7 +62,7 @@ class DCAETrainer(Trainer):
                     images = feed_dict["data"].cuda()
                     
                     # Forward pass
-                    with torch.cuda.amp.autocast(enabled=self.enable_amp):
+                    with torch.amp.autocast(device_type='cuda') if self.enable_amp else nullcontext():
                         # Get the actual model from DDP wrapper if needed
                         model_unwrapped = model.module if hasattr(model, 'module') else model
                         
@@ -135,7 +137,7 @@ class DCAETrainer(Trainer):
     def run_step(self, feed_dict):
         images = feed_dict["data"]
         
-        with torch.cuda.amp.autocast('cuda', enabled=self.enable_amp):  
+        with torch.amp.autocast(device_type='cuda') if self.enable_amp else nullcontext():
             # Get the actual model from DDP wrapper if needed
             model = self.model.module if hasattr(self.model, 'module') else self.model
             
