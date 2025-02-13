@@ -10,60 +10,35 @@ data_provider:
   batch_size: 16
 
 # Training Configuration
-trainer:
-  # Basic training settings
-  num_epochs: 100
-  save_interval: 5  # Save checkpoint every N epochs
-  eval_interval: 1  # Run validation every N epochs
-  
-  # Loss weights
-  reconstruction_weight: 1.0
-  perceptual_weight: 0.1
-  
-  # Optimizer settings
-  optimizer:
-    name: "adamw"
-    lr: 1.0e-4
-    weight_decay: 0.05
+run_config:
+  n_epochs: 100
+  init_lr: 1.0e-4
+  warmup_epochs: 5
+  warmup_lr: 1.0e-6
+  lr_schedule_name: "cosine"
+  lr_schedule_param:
+    step: []
+  optimizer_name: "adamw"
+  optimizer_params:
     betas: [0.9, 0.999]
     eps: 1.0e-8
-  
-  # Learning rate scheduler
-  lr_scheduler:
-    name: "cosine"
-    warmup_epochs: 5
-    warmup_lr: 1.0e-6
-    min_lr: 1.0e-6
-  
-  # Gradient clipping
+  weight_decay: 0.05
+  no_wd_keys: []
   grad_clip: 1.0
-  
-  # Mixed precision training
-  amp: "fp16"  # Options: "fp32", "fp16", "bf16"
-  
-  # EMA settings
-  ema:
-    enabled: true
-    decay: 0.9998
-    warmup_steps: 2000
-  
-  # Checkpointing
-  resume: true  # Resume from latest checkpoint if available
-  checkpoint_dir: "checkpoints"
-  
-  # Logging
-  logging:
-    enabled: true
-    log_interval: 100  # Log every N steps
-    save_images: true
-    num_save_images: 8  # Number of sample images to save during validation
-    
-    # Wandb logging
-    wandb:
-      enabled: true
-      project: "dcae finetuning"
-      entity: null  # Set your wandb entity
-      tags: ["dcae", "autoencoder"]
+  reset_bn: false
+  reset_bn_size: 0
+  reset_bn_batch_size: 32
+  eval_image_size: [512, 512]
+
+# Model Configuration
+model:
+  reconstruction_weight: 1.0
+  perceptual_weight: 0.1
+
+# Logging Configuration
+logging:
+  save_interval: 5  # Save checkpoint every N epochs
+  eval_interval: 1  # Run validation every N epochs
 
 # Hardware/System settings
 system:
