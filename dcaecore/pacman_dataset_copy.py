@@ -51,7 +51,7 @@ class SimplePacmanDataset(Dataset):
             item = self.dataset[idx]
         
         try:
-            image = Image.open(item['frame_image']).convert('RGB')
+            image = item['frame_image'].convert('RGB')
             image = self.transform(image)
             return {"data": image}
         except Exception as e:
