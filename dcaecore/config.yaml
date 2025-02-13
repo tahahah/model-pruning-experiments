@@ -7,7 +7,7 @@ data_provider:
   image_size: 512
   verification_mode: "no_checks"
   streaming: true
-  batch_size: 4
+  batch_size: 1
   num_workers: 2
 
 # Training Configuration
