@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import itertools
 import os
 import sys
 import torch
@@ -125,9 +126,10 @@ def main():
     data_cfg.num_replicas = get_dist_size()
     data_cfg.rank = get_dist_rank()
     dataset_provider = SimplePacmanDatasetProvider(data_cfg)
-    
-    # Get a sample batch for visualization
-    sample_batch = next(iter(dataset_provider.valid))
+
+    # Get a random sample batch for visualization
+    random_index = torch.randint(0, len(dataset_provider.valid), (1,)).item()
+    sample_batch = next(itertools.islice(dataset_provider.valid, random_index, None))
 
     iteration = 0
     while True:
@@ -163,11 +165,21 @@ def main():
             run_config = create_run_config(config)
             trainer = DCAETrainer(
                 model=pruned_model,
-                run_config=run_config,
+                path=args.save_dir,
                 dataset_provider=dataset_provider,
-                device=device
             )
             
+            # Configure trainer logging
+            trainer.write_train_log = True  # Enable training step logging
+            trainer.write_val_log = True    # Enable validation step logging
+            trainer.log_interval = 100  # Set logging frequency
+            
+            # Setup trainer with safe defaults
+            trainer.prep_for_training(
+                run_config=run_config,
+                ema_decay=None,  # EMA is handled by EfficientViT's trainer
+                amp=None  # AMP is handled by EfficientViT's trainer
+            )
             # Train model
             trainer.train()
             

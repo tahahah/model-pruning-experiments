@@ -22,8 +22,8 @@ sys.path.append(ROOT_DIR)
 
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
-from trainer import DCAETrainer, DCAERunConfig
-from pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
+from dcaecore.trainer import DCAETrainer, DCAERunConfig
+from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 
 def set_random_seed(seed: int):
     """Set random seed for reproducibility."""
@@ -50,11 +50,6 @@ def setup_logger(output_dir: str) -> logging.Logger:
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-    
-    # Create file handler
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(formatter)
     
     return logger
 
