@@ -79,33 +79,45 @@ def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
     return pruned_model
 
 def plot_weight_distributions(model, output_dir, sparsity):
-    """Plot weight distributions for different layer groups"""
+    """Plot weight distributions for different layer groups in a memory-efficient way"""
     plt.figure(figsize=(15, 5))
     
-    # Group layers by type
-    encoder_weights = []
-    decoder_weights = []
+    # Define bins once for consistency
+    bins = np.linspace(-0.5, 0.5, 50)
     
-    for name, module in model.named_modules():
-        if isinstance(module, (nn.Linear, nn.Conv2d)):
-            weights = module.weight.data.cpu().numpy().flatten()
-            if 'encoder' in name:
-                encoder_weights.extend(weights)
-            elif 'decoder' in name:
-                decoder_weights.extend(weights)
-    
-    # Plot distributions
-    plt.subplot(1, 2, 1)
-    plt.hist(encoder_weights, bins=50, alpha=0.7, density=True)
-    plt.title(f'Encoder Weights (Sparsity: {sparsity:.1%})')
-    plt.xlabel('Weight Value')
-    plt.ylabel('Density')
-    
-    plt.subplot(1, 2, 2)
-    plt.hist(decoder_weights, bins=50, alpha=0.7, density=True)
-    plt.title(f'Decoder Weights (Sparsity: {sparsity:.1%})')
-    plt.xlabel('Weight Value')
-    plt.ylabel('Density')
+    # Process encoder and decoder weights separately
+    for subplot_idx, layer_type in enumerate(['encoder', 'decoder'], 1):
+        plt.subplot(1, 2, subplot_idx)
+        
+        # Initialize histogram arrays
+        hist_counts = np.zeros_like(bins[:-1], dtype=np.float64)
+        total_weights = 0
+        
+        # Process weights layer by layer
+        for name, module in model.named_modules():
+            if isinstance(module, (nn.Linear, nn.Conv2d)) and layer_type in name:
+                # Process each weight tensor
+                weights = module.weight.data.cpu().numpy()
+                total_weights += weights.size
+                
+                # Update histogram counts
+                hist, _ = np.histogram(weights.ravel(), bins=bins, density=False)
+                hist_counts += hist
+                
+                # Clear memory
+                del weights
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        
+        # Normalize histogram
+        if total_weights > 0:
+            hist_counts = hist_counts / total_weights
+        
+        # Plot histogram
+        plt.stairs(hist_counts, bins, alpha=0.7)
+        plt.title(f'{layer_type.capitalize()} Weights (Sparsity: {sparsity:.1%})')
+        plt.xlabel('Weight Value')
+        plt.ylabel('Density')
     
     plt.tight_layout()
     
