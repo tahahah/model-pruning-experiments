@@ -55,6 +55,13 @@ def visualize_reconstructions(model, sample_batch, save_dir: str, step: str, ite
         latent = model.encode(x)
         y = model.decode(latent)
         
+        loss_dict = calculate_loss(x, y)
+
+        # Log loss dict
+        for key, value in loss_dict.items():
+            logging.info({f"train/{key}": value})
+
+        
         # Create a grid of original vs reconstructed images
         n_samples = min(4, x.size(0))  # Show up to 4 samples
         plt.figure(figsize=(12, 3*n_samples))
@@ -74,7 +81,7 @@ def visualize_reconstructions(model, sample_batch, save_dir: str, step: str, ite
             plt.title(f"Reconstructed {idx+1}")
             plt.axis('off')
         
-        plt.suptitle(f"Iteration {iteration} - {step}")
+        plt.suptitle(f"Iteration {iteration} - {step}, LOSS: {loss_dict['loss']}")
         plt.tight_layout()
         
         # Save the comparison plot
@@ -83,6 +90,34 @@ def visualize_reconstructions(model, sample_batch, save_dir: str, step: str, ite
         plt.close()
         
         print(f"Saved reconstruction comparison to {save_path}")
+
+def calculate_loss(og, recon):
+    import torch.nn.functional as F
+    from torchmetrics.image import LearnedPerceptualImagePatchSimilarity
+
+    lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).cuda()
+    def normalize_for_lpips(x):
+        """Normalize tensor to [0,1] range for LPIPS"""
+        return (x.clamp(-1, 1) + 1) / 2
+    
+    # Reconstruction loss (MSE)
+    recon_loss = F.mse_loss(recon, og)
+    
+    # Normalize images for LPIPS
+    images_norm = normalize_for_lpips(og)
+    recon_norm = normalize_for_lpips(recon)
+    perceptual_loss = lpips(images_norm, recon_norm)
+    
+    # Total loss
+    total_loss = (1 * recon_loss + 
+                    0.1 * perceptual_loss)
+    
+    return {
+        "loss": total_loss,
+        "recon_loss": recon_loss,
+        "perceptual_loss": perceptual_loss,
+        "reconstructed": reconstructed
+    }
 
 def main():
     parser = argparse.ArgumentParser()
@@ -182,7 +217,7 @@ def main():
             )
             # Train model
             trainer.train()
-            
+
             # Visualize reconstructions after retraining
             visualize_reconstructions(pruned_model, sample_batch, args.save_dir, "after_retraining", iteration, device)
             
