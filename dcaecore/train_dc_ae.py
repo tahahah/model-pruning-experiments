@@ -190,7 +190,7 @@ def main():
     data_cfg = PacmanDatasetProviderConfig(
         name=data_provider_cfg.get('name', 'SimplePacmanDatasetProvider'),
         train_dataset=data_provider_cfg.get('train_dataset', 'Tahahah/PacmanDataset_3'),
-        val_dataset=data_provider_cfg.get('val_dataset', 'Tahahah/PacmanDataset_2'),
+        val_dataset=data_provider_cfg.get('val_dataset', 'Tahahah/PacmanDataset_3'),
         train_split=data_provider_cfg.get('train_split', 'train'),
         val_split=data_provider_cfg.get('val_split', 'train'),
         image_size=data_provider_cfg.get('image_size', 512),

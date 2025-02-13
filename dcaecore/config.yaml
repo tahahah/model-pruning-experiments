@@ -3,7 +3,7 @@
 data_provider:
   name: "SimplePacmanDatasetProvider"
   train_dataset: "Tahahah/PacmanDataset_3"
-  val_dataset: "Tahahah/PacmanDataset_2"
+  val_dataset: "Tahahah/PacmanDataset_3"
   train_split: "train"
   val_split: "train"
   image_size: 512
