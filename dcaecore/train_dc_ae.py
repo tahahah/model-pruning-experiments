@@ -189,13 +189,16 @@ def main():
     data_provider_cfg = config.get('data_provider', {})
     data_cfg = PacmanDatasetProviderConfig(
         name=data_provider_cfg.get('name', 'SimplePacmanDatasetProvider'),
-        dataset_name=data_provider_cfg.get('dataset_name', 'Tahahah/PacmanDataset_3'),
-        split=data_provider_cfg.get('split', 'train'),
+        train_dataset=data_provider_cfg.get('train_dataset', 'Tahahah/PacmanDataset_3'),
+        val_dataset=data_provider_cfg.get('val_dataset', 'Tahahah/PacmanDataset_2'),
+        train_split=data_provider_cfg.get('train_split', 'train'),
+        val_split=data_provider_cfg.get('val_split', 'train'),
         image_size=data_provider_cfg.get('image_size', 512),
         verification_mode=data_provider_cfg.get('verification_mode', 'no_checks'),
         streaming=data_provider_cfg.get('streaming', True),
         batch_size=data_provider_cfg.get('batch_size', 16),
-        n_worker=data_provider_cfg.get('num_workers', 4)
+        n_worker=data_provider_cfg.get('num_workers', 4),
+        val_steps=data_provider_cfg.get('val_steps', 100)
     )
 
     # Initialize data provider with distributed info
