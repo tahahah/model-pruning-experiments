@@ -93,3 +93,4 @@ class SimplePacmanDatasetProvider(BaseDataProvider):
             drop_last=False,
             pin_memory=True
         )
+        return self.train, self.valid, self.valid
