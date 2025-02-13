@@ -39,6 +39,16 @@ model:
 logging:
   save_interval: 5  # Save checkpoint every N epochs
   eval_interval: 1  # Run validation every N epochs
+  log_interval: 100  # Log every N steps
+  save_images: true
+  num_save_images: 8  # Number of sample images to save during validation
+  
+  # Wandb logging
+  wandb:
+    enabled: true
+    project: "dcae-finetuning"
+    entity: null  # Set your wandb entity
+    tags: ["dcae", "autoencoder"]
 
 # Hardware/System settings
 system:

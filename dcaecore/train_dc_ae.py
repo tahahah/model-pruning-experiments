@@ -3,12 +3,17 @@ import sys
 import argparse
 import yaml
 import torch
-import wandb
 import random
 import numpy as np
 import logging
 from datetime import datetime
-from omegaconf import OmegaConf
+
+# Try importing wandb
+try:
+    import wandb
+    wandb_available = True
+except ImportError:
+    wandb_available = False
 
 # Add project root to path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -62,43 +67,48 @@ def load_config(config_path: str) -> dict:
         config = yaml.safe_load(f)
     return config
 
-def setup_wandb(config: dict):
-    """Initialize Weights & Biases logging."""
-    if config['trainer']['logging']['wandb']['enabled']:
+def setup_wandb(config):
+    """Initialize wandb if enabled in config."""
+    if not wandb_available:
+        return
+
+    wandb_config = config.get('logging', {}).get('wandb', {})
+    if wandb_config.get('enabled', False):
         wandb.init(
-            project=config['trainer']['logging']['wandb']['project'],
-            entity=config['trainer']['logging']['wandb']['entity'],
+            project=wandb_config.get('project', 'dcae-finetuning'),
+            entity=wandb_config.get('entity', None),
             config=config,
-            tags=config['trainer']['logging']['wandb']['tags']
+            tags=wandb_config.get('tags', ['dcae', 'autoencoder'])
         )
 
 def create_run_config(config: dict) -> DCAERunConfig:
     """Create RunConfig from configuration dictionary."""
+    # Get model config for loss weights
+    model_cfg = config.get('model', {})
+    run_cfg = config.get('run_config', {})
+    
     run_config = DCAERunConfig(
-        num_epochs=config['trainer']['num_epochs'],
-        reconstruction_weight=config['trainer']['reconstruction_weight'],
-        perceptual_weight=config['trainer']['perceptual_weight'],
-        grad_clip=config['trainer']['grad_clip']
+        # Required RunConfig parameters
+        n_epochs=run_cfg['n_epochs'],
+        init_lr=run_cfg['init_lr'],
+        warmup_epochs=run_cfg['warmup_epochs'],
+        warmup_lr=run_cfg['warmup_lr'],
+        lr_schedule_name=run_cfg['lr_schedule_name'],
+        lr_schedule_param=run_cfg['lr_schedule_param'],
+        optimizer_name=run_cfg['optimizer_name'],
+        optimizer_params=run_cfg['optimizer_params'],
+        weight_decay=run_cfg['weight_decay'],
+        no_wd_keys=run_cfg['no_wd_keys'],
+        grad_clip=run_cfg['grad_clip'],
+        reset_bn=run_cfg['reset_bn'],
+        reset_bn_size=run_cfg['reset_bn_size'],
+        reset_bn_batch_size=run_cfg['reset_bn_batch_size'],
+        eval_image_size=run_cfg['eval_image_size'],
+        
+        # DCAE specific parameters
+        reconstruction_weight=model_cfg.get('reconstruction_weight', 1.0),
+        perceptual_weight=model_cfg.get('perceptual_weight', 0.1)
     )
-    
-    # Setup optimizer
-    opt_cfg = config['trainer']['optimizer']
-    run_config.optimizer_name = opt_cfg['name']
-    run_config.optimizer_params = {
-        'lr': opt_cfg['lr'],
-        'weight_decay': opt_cfg['weight_decay'],
-        'betas': opt_cfg['betas'],
-        'eps': opt_cfg['eps']
-    }
-    
-    # Setup scheduler
-    sched_cfg = config['trainer']['lr_scheduler']
-    run_config.scheduler_name = sched_cfg['name']
-    run_config.scheduler_params = {
-        'warmup_epochs': sched_cfg['warmup_epochs'],
-        'warmup_lr': sched_cfg['warmup_lr'],
-        'min_lr': sched_cfg['min_lr']
-    }
     
     return run_config
 
@@ -149,10 +159,17 @@ def main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
     
-    # Create data config
+    # Create data config with all required parameters
+    data_provider_cfg = config.get('data_provider', {})
     data_cfg = PacmanDatasetProviderConfig(
-        batch_size=config["data_provider"]["batch_size"],
-        n_worker=config.get("data_provider", {}).get("num_workers", 4)  # Default to 4 workers if not specified
+        name=data_provider_cfg.get('name', 'SimplePacmanDatasetProvider'),
+        dataset_name=data_provider_cfg.get('dataset_name', 'Tahahah/PacmanDataset_3'),
+        split=data_provider_cfg.get('split', 'train'),
+        image_size=data_provider_cfg.get('image_size', 512),
+        verification_mode=data_provider_cfg.get('verification_mode', 'no_checks'),
+        streaming=data_provider_cfg.get('streaming', True),
+        batch_size=data_provider_cfg.get('batch_size', 16),
+        n_worker=data_provider_cfg.get('num_workers', 4)
     )
 
     # Initialize data provider with distributed info
@@ -186,11 +203,14 @@ def main():
         data_provider=data_provider
     )
     
-    # Setup trainer
+    # Get logging config
+    logging_cfg = config.get('logging', {})
+    
+    # Setup trainer with safe defaults
     trainer.prep_for_training(
         run_config=run_config,
-        ema_decay=config['trainer']['ema']['decay'] if config['trainer']['ema']['enabled'] else None,
-        amp=config['trainer']['amp']
+        ema_decay=None,  # EMA is handled by EfficientViT's trainer
+        amp=None  # AMP is handled by EfficientViT's trainer
     )
     logger.info("Trainer setup complete")
     
