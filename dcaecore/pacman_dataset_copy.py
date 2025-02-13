@@ -40,7 +40,7 @@ class SimplePacmanDataset(Dataset):
     
     def __len__(self):
         if self.cfg.streaming:
-            return int(1e9)  # Effectively infinite for streaming dataset
+            return int(1000)  # Effectively infinite for streaming dataset
         return len(self.dataset)
     
     def __getitem__(self, idx):
