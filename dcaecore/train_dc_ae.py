@@ -4,6 +4,10 @@ import argparse
 import yaml
 import torch
 import wandb
+import random
+import numpy as np
+import logging
+from datetime import datetime
 from omegaconf import OmegaConf
 
 # Add project root to path
@@ -13,9 +17,44 @@ sys.path.append(ROOT_DIR)
 
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
-from efficientvit.apps.utils import set_random_seed, setup_logger
 from dcaecore.trainer import DCAETrainer, DCAERunConfig
 from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
+
+def set_random_seed(seed: int):
+    """Set random seed for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+def setup_logger(output_dir: str) -> logging.Logger:
+    """Setup logger that outputs to both console and file."""
+    logger = logging.getLogger('dcae_training')
+    logger.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    # Create console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    # Create file handler
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(output_dir, f'training_{timestamp}.log')
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    return logger
 
 def load_config(config_path: str) -> dict:
     """Load configuration from YAML file."""
@@ -74,23 +113,27 @@ def main():
     config = load_config(args.config)
     
     # Setup system
-    set_random_seed(config['system']['seed'])
     os.makedirs(args.output_dir, exist_ok=True)
-    setup_logger(args.output_dir)
+    logger = setup_logger(args.output_dir)
+    set_random_seed(config['system']['seed'])
+    logger.info(f"Set random seed to {config['system']['seed']}")
     
     # Initialize wandb
     setup_wandb(config)
+    logger.info("Initialized Weights & Biases logging")
     
     # Create data provider
     data_cfg = PacmanDatasetProviderConfig(**config['data_provider'])
     data_provider = SimplePacmanDatasetProvider(data_cfg)
+    logger.info(f"Created data provider with batch size {data_cfg.batch_size}")
     
     # Load pretrained model
-    print(f"Loading pretrained model from {args.pretrained}")
+    logger.info(f"Loading pretrained model from {args.pretrained}")
     model = DCAE_HF.from_pretrained(args.pretrained)
     
     # Create run config
     run_config = create_run_config(config)
+    logger.info("Created training configuration")
     
     # Create trainer
     trainer = DCAETrainer(
@@ -105,14 +148,16 @@ def main():
         ema_decay=config['trainer']['ema']['decay'] if config['trainer']['ema']['enabled'] else None,
         amp=config['trainer']['amp']
     )
+    logger.info("Trainer setup complete")
     
     # Start training
-    print("Starting training...")
+    logger.info("Starting training...")
     trainer.train()
     
     # Cleanup
     if wandb.run is not None:
         wandb.finish()
+    logger.info("Training completed")
 
 if __name__ == "__main__":
     main()
