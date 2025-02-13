@@ -246,7 +246,7 @@ def main():
                 param_reduction = 1 - nonzero/orig_nonzero if sparsity > 0 else 0
                 
                 # Add to markdown
-                f.write(f"| {sparsity:.1%} | ![{output_name}](./output/{output_name}) | {param_reduction:.1%} |\n")
+                f.write(f"| {sparsity:.1%} | ![{output_name}]({output_name}) | {param_reduction:.1%} |\n")
             
             f.write("\n")
 
