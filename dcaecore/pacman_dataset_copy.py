@@ -16,6 +16,7 @@ class PacmanDatasetProviderConfig(BaseDataProviderConfig):
     verification_mode: str = "no_checks"
     streaming: bool = True
     batch_size: int = 32
+    n_worker: int = 1
 
 class SimplePacmanDataset(Dataset):
     def __init__(self, cfg: PacmanDatasetProviderConfig, transform=None):
