@@ -47,6 +47,10 @@ class DCAETrainer(Trainer):
         # Initialize best validation score
         self.best_val = float('inf')
         
+    def normalize_for_lpips(self, x):
+        """Normalize tensor to [0,1] range for LPIPS"""
+        return (x.clamp(-1, 1) + 1) / 2
+
     def _validate(self, model, data_loader, epoch) -> Dict[str, Any]:
         model.eval()
         val_loss = AverageMeter(is_distributed=False)
@@ -71,7 +75,12 @@ class DCAETrainer(Trainer):
                         
                         # Calculate losses
                         recon_loss = F.mse_loss(reconstructed, images)
-                        perceptual_loss = self.lpips(reconstructed * 0.5 + 0.5, images * 0.5 + 0.5)
+                        
+                        # Normalize images for LPIPS
+                        images_norm = self.normalize_for_lpips(images)
+                        recon_norm = self.normalize_for_lpips(reconstructed)
+                        perceptual_loss = self.lpips(images_norm, recon_norm)
+                        
                         total_loss = (self.run_config.reconstruction_weight * recon_loss + 
                                     self.run_config.perceptual_weight * perceptual_loss)
                         
@@ -148,8 +157,10 @@ class DCAETrainer(Trainer):
             # Reconstruction loss (MSE)
             recon_loss = F.mse_loss(reconstructed, images)
             
-            # Perceptual loss (LPIPS)
-            perceptual_loss = self.lpips(reconstructed * 0.5 + 0.5, images * 0.5 + 0.5)
+            # Normalize images for LPIPS
+            images_norm = self.normalize_for_lpips(images)
+            recon_norm = self.normalize_for_lpips(reconstructed)
+            perceptual_loss = self.lpips(images_norm, recon_norm)
             
             # Total loss
             total_loss = (self.run_config.reconstruction_weight * recon_loss + 
