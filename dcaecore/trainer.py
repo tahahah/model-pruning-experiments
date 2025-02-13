@@ -302,4 +302,3 @@ class DCAETrainer(Trainer):
         """Override write_metric to ensure proper wandb logging"""
         if wandb_available and wandb.run is not None:
             wandb.log(metric_dict)
-        super().write_metric(metric_dict, metric_type)
