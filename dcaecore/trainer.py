@@ -26,6 +26,7 @@ class DCAERunConfig(RunConfig):
                  perceptual_weight: float = 0.1,
                  save_interval: int = 5,
                  eval_interval: int = 1,
+                 log_interval: int = 100,
                  **kwargs):
         super().__init__(**kwargs)
         # Model specific parameters
@@ -35,6 +36,7 @@ class DCAERunConfig(RunConfig):
         # Training intervals
         self.save_interval = save_interval
         self.eval_interval = eval_interval
+        self.log_interval = log_interval
 
 class DCAETrainer(Trainer):
     def __init__(self, path: str, model: DCAE, data_provider):
@@ -50,6 +52,28 @@ class DCAETrainer(Trainer):
     def normalize_for_lpips(self, x):
         """Normalize tensor to [0,1] range for LPIPS"""
         return (x.clamp(-1, 1) + 1) / 2
+
+    def log_images(self, images, reconstructed, prefix="train", step=0):
+        """Helper function to log original and reconstructed images"""
+        if wandb_available and wandb.run is not None:
+            # Convert images from [-1,1] to [0,1] range
+            images = (images + 1) / 2
+            reconstructed = (reconstructed + 1) / 2
+            
+            # Create a grid of original and reconstructed images side by side
+            n_samples = min(4, images.size(0))  # Log up to 4 images
+            image_grid = []
+            for i in range(n_samples):
+                pair = torch.cat([images[i:i+1], reconstructed[i:i+1]], dim=-1)
+                image_grid.append(pair)
+            image_grid = torch.cat(image_grid, dim=-2)  # Stack vertically
+            
+            wandb.log({
+                f"{prefix}/reconstructions": wandb.Image(
+                    image_grid, 
+                    caption=f"Left: Original, Right: Reconstructed (Step {step})"
+                )
+            })
 
     def _validate(self, model, data_loader, epoch) -> Dict[str, Any]:
         model.eval()
@@ -101,18 +125,26 @@ class DCAETrainer(Trainer):
                     val_lpips.update(perceptual_loss.item(), images.size(0))
                     
                     # Log validation metrics
-                    if self.write_val_log:
-                        self.write_metric(
-                            {
-                                "val/loss": total_loss.item(),
-                                "val/recon_loss": recon_loss.item(),
-                                "val/perceptual_loss": perceptual_loss.item(),
-                                "val/psnr": psnr_val,
-                                "val/ssim": ssim_val.item(),
-                                "val/lpips": perceptual_loss.item(),
-                                "val/epoch": epoch,
-                            },
-                            "val",
+                    self.write_metric(
+                        {
+                            "val/loss": total_loss.item(),
+                            "val/recon_loss": recon_loss.item(),
+                            "val/perceptual_loss": perceptual_loss.item(),
+                            "val/psnr": psnr_val,
+                            "val/ssim": ssim_val.item(),
+                            "val/lpips": perceptual_loss.item(),
+                            "val/epoch": epoch,
+                        },
+                        "val",
+                    )
+                    
+                    # Log validation images for first batch
+                    if batch_id == 0:
+                        self.log_images(
+                            images, 
+                            reconstructed,
+                            prefix="val",
+                            step=epoch
                         )
                     
                     # Update progress bar
@@ -125,29 +157,6 @@ class DCAETrainer(Trainer):
                         'lpips': val_lpips.avg
                     })
                     t.update()
-                    
-                    # Save sample reconstructions
-                    if batch_id == 0 and is_master():
-                        sample_dir = os.path.join(self.path, "samples", f"epoch_{epoch}")
-                        os.makedirs(sample_dir, exist_ok=True)
-                        
-                        for i in range(min(8, images.size(0))):
-                            sample_path = os.path.join(sample_dir, f"sample_{i}.png")
-                            sample_image = torch.cat([
-                                images[i:i+1] * 0.5 + 0.5,
-                                reconstructed[i:i+1] * 0.5 + 0.5
-                            ], dim=-1)
-                            torchvision.utils.save_image(sample_image, sample_path)
-                            
-                        if self.write_val_log:
-                            self.write_metric(
-                                {
-                                    "val/reconstructions": [
-                                        self.save_image(sample_path) for sample_path in os.listdir(sample_dir)
-                                    ]
-                                },
-                                "val",
-                            )
         
         metrics = {
             "val/loss": val_loss.avg,
@@ -196,7 +205,7 @@ class DCAETrainer(Trainer):
         train_perceptual_loss = AverageMeter(is_distributed=False)
         
         with tqdm(total=len(self.data_provider.train), desc=f"Training Epoch #{epoch}") as t:
-            for feed_dict in self.data_provider.train:
+            for step, feed_dict in enumerate(self.data_provider.train):
                 feed_dict = self.before_step(feed_dict)
                 self.optimizer.zero_grad()
                 
@@ -211,16 +220,24 @@ class DCAETrainer(Trainer):
                 train_perceptual_loss.update(output_dict["perceptual_loss"].item(), feed_dict["data"].size(0))
                 
                 # Log training metrics
-                if self.write_train_log:
-                    self.write_metric(
-                        {
-                            "train/loss": output_dict["loss"].item(),
-                            "train/recon_loss": output_dict["recon_loss"].item(),
-                            "train/perceptual_loss": output_dict["perceptual_loss"].item(),
-                            "train/lr": self.optimizer.param_groups[0]["lr"],
-                            "train/epoch": epoch,
-                        },
-                        "train",
+                self.write_metric(
+                    {
+                        "train/loss": output_dict["loss"].item(),
+                        "train/recon_loss": output_dict["recon_loss"].item(),
+                        "train/perceptual_loss": output_dict["perceptual_loss"].item(),
+                        "train/lr": self.optimizer.param_groups[0]["lr"],
+                        "train/epoch": epoch,
+                    },
+                    "train",
+                )
+                
+                # Log images periodically
+                if step % self.run_config.log_interval == 0:
+                    self.log_images(
+                        feed_dict["data"], 
+                        output_dict["reconstructed"],
+                        prefix="train",
+                        step=step + epoch * len(self.data_provider.train)
                     )
                 
                 # Optimizer step
