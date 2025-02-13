@@ -61,8 +61,11 @@ class DCAETrainer(Trainer):
                     
                     # Forward pass
                     with torch.cuda.amp.autocast(enabled=self.enable_amp):
-                        encoded = self.model.encode(images)
-                        reconstructed = self.model.decode(encoded)
+                        # Get the actual model from DDP wrapper if needed
+                        model_unwrapped = model.module if hasattr(model, 'module') else model
+                        
+                        encoded = model_unwrapped.encode(images)
+                        reconstructed = model_unwrapped.decode(encoded)
                         
                         # Calculate losses
                         recon_loss = F.mse_loss(reconstructed, images)
@@ -132,10 +135,13 @@ class DCAETrainer(Trainer):
     def run_step(self, feed_dict):
         images = feed_dict["data"]
         
-        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+        with torch.cuda.amp.autocast('cuda', enabled=self.enable_amp):  
+            # Get the actual model from DDP wrapper if needed
+            model = self.model.module if hasattr(self.model, 'module') else self.model
+            
             # Forward pass through DCAE
-            encoded = self.model.encode(images)
-            reconstructed = self.model.decode(encoded)
+            encoded = model.encode(images)
+            reconstructed = model.decode(encoded)
             
             # Reconstruction loss (MSE)
             recon_loss = F.mse_loss(reconstructed, images)
