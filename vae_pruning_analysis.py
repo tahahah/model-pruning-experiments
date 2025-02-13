@@ -78,6 +78,44 @@ def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
     
     return pruned_model
 
+def plot_weight_distributions(model, output_dir, sparsity):
+    """Plot weight distributions for different layer groups"""
+    plt.figure(figsize=(15, 5))
+    
+    # Group layers by type
+    encoder_weights = []
+    decoder_weights = []
+    
+    for name, module in model.named_modules():
+        if isinstance(module, (nn.Linear, nn.Conv2d)):
+            weights = module.weight.data.cpu().numpy().flatten()
+            if 'encoder' in name:
+                encoder_weights.extend(weights)
+            elif 'decoder' in name:
+                decoder_weights.extend(weights)
+    
+    # Plot distributions
+    plt.subplot(1, 2, 1)
+    plt.hist(encoder_weights, bins=50, alpha=0.7, density=True)
+    plt.title(f'Encoder Weights (Sparsity: {sparsity:.1%})')
+    plt.xlabel('Weight Value')
+    plt.ylabel('Density')
+    
+    plt.subplot(1, 2, 2)
+    plt.hist(decoder_weights, bins=50, alpha=0.7, density=True)
+    plt.title(f'Decoder Weights (Sparsity: {sparsity:.1%})')
+    plt.xlabel('Weight Value')
+    plt.ylabel('Density')
+    
+    plt.tight_layout()
+    
+    # Save plot
+    plot_path = output_dir / f'weight_dist_sparsity_{sparsity:.1f}.png'
+    plt.savefig(plot_path)
+    plt.close()
+    
+    return plot_path
+
 def process_image(model, image_path, output_path, device):
     """Process a single image through the VAE"""
     transform = transforms.Compose([
@@ -153,6 +191,22 @@ def main():
         f.write(f"- Total Parameters: {orig_params:,}\n")
         f.write(f"- Non-zero Parameters: {orig_nonzero:,}\n\n")
         
+        f.write("## Weight Distribution Analysis\n\n")
+        for sparsity in sparsity_levels:
+            print(f"\nAnalyzing weight distributions at sparsity {sparsity:.1f}")
+            current_model = model if sparsity == 0.0 else fine_grained_prune(model, sparsity)
+            current_model = current_model.to(device)
+            
+            # Plot and save weight distributions
+            dist_plot_path = plot_weight_distributions(current_model, output_dir, sparsity)
+            f.write(f"### Sparsity Level: {sparsity:.1%}\n")
+            f.write(f"![Weight Distributions](./output/{dist_plot_path.name})\n\n")
+            
+            # Add layer-wise statistics
+            _, nonzero = analyze_weight_distribution(current_model)
+            param_reduction = 1 - nonzero/orig_nonzero if sparsity > 0 else 0
+            f.write(f"- Parameter Reduction: {param_reduction:.1%}\n\n")
+        
         f.write("## Image Reconstruction Analysis\n\n")
         
         for img_path in image_paths:
@@ -180,7 +234,7 @@ def main():
                 param_reduction = 1 - nonzero/orig_nonzero if sparsity > 0 else 0
                 
                 # Add to markdown
-                f.write(f"| {sparsity:.1%} | ![{output_name}]({output_name}) | {param_reduction:.1%} |\n")
+                f.write(f"| {sparsity:.1%} | ![{output_name}](./output/{output_name}) | {param_reduction:.1%} |\n")
             
             f.write("\n")
 
