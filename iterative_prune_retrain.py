@@ -128,7 +128,7 @@ def main():
     dataset_provider = SimplePacmanDatasetProvider(data_cfg)
 
     # Get a random sample batch for visualization
-    random_index = torch.randint(0, len(dataset_provider.valid), (1,)).item()
+    random_index = torch.randint(0, 100, (1,)).item()
     sample_batch = next(itertools.islice(dataset_provider.valid, random_index, None))
 
     iteration = 0
