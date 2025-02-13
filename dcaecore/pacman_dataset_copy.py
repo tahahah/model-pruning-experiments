@@ -59,7 +59,6 @@ class SimplePacmanDataset(Dataset):
 
 class SimplePacmanDatasetProvider(BaseDataProvider):
     def __init__(self, cfg: PacmanDatasetProviderConfig):
-        super().__init__(cfg)
         self.cfg = cfg
         self.train = None
         self.valid = None
@@ -96,9 +95,6 @@ class SimplePacmanDatasetProvider(BaseDataProvider):
         return self.train, self.valid, self.valid
     
     def set_epoch(self, epoch):
-        """Handle epoch setting for distributed training"""
-        # Only needed for distributed training with DistributedSampler
-        if self.train.sampler is not None:
-            self.train.sampler.set_epoch(epoch)
-        if self.valid.sampler is not None:
-            self.valid.sampler.set_epoch(epoch)
+        """Override set_epoch to handle epoch updates without requiring sampler.set_epoch"""
+        # Since we're using a streaming dataset, we don't need to actually do anything here
+        pass
