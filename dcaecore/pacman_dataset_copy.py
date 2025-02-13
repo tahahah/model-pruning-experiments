@@ -40,15 +40,20 @@ class SimplePacmanDataset(Dataset):
         return len(self.dataset)
     
     def __getitem__(self, idx):
-        try:
+        if self.cfg.streaming:
+            # For streaming, get next item from iterator
+            item = next(iter(self.dataset))
+        else:
             item = self.dataset[idx]
+        
+        try:
             image = item['frame_image'].convert('RGB')
             image = self.transform(image)
             return {"data": image}
         except Exception as e:
-            print(f"Error loading image at index {idx}: {str(e)}")
-            # Return a random noise image as fallback
-            return {"data": torch.randn(3, self.cfg.image_size, self.cfg.image_size)}
+            print(f"Error processing image {item['image']}: {e}")
+            # Return a blank image in case of error
+            return {"data": torch.zeros(3, self.cfg.image_size, self.cfg.image_size)}
     
     def build_transform(self):
         return transforms.Compose([
