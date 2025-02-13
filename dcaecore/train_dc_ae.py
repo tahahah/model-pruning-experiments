@@ -53,11 +53,8 @@ def setup_logger(output_dir: str) -> logging.Logger:
     
     # Create file handler
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = os.path.join(output_dir, f'training_{timestamp}.log')
-    file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
     
     return logger
 

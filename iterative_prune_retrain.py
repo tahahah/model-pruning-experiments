@@ -102,7 +102,7 @@ def main():
     logger = setup_logger(args.save_dir)
     
     # Initialize model and load weights
-    model = DCAE_HF().from_pretrained(args.model_path)
+    model = DCAE_HF.from_pretrained(args.model_path)
     model = model.to(device)
     
     # Setup dataset for visualization
@@ -127,7 +127,7 @@ def main():
     dataset_provider = SimplePacmanDatasetProvider(data_cfg)
     
     # Get a sample batch for visualization
-    sample_batch = next(iter(dataset_provider.val_loader))
+    sample_batch = next(iter(dataset_provider.valid))
 
     iteration = 0
     while True:
