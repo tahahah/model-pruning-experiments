@@ -185,9 +185,11 @@ def main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
     
-    # Create data config with all required parameters
+    # Create data configs for train and val
     data_provider_cfg = config.get('data_provider', {})
-    data_cfg = PacmanDatasetProviderConfig(
+    
+    # Training data config
+    train_cfg = PacmanDatasetProviderConfig(
         name=data_provider_cfg.get('name', 'SimplePacmanDatasetProvider'),
         dataset_name=data_provider_cfg.get('dataset_name', 'Tahahah/PacmanDataset_3'),
         split=data_provider_cfg.get('split', 'train'),
@@ -197,11 +199,36 @@ def main():
         batch_size=data_provider_cfg.get('batch_size', 16),
         n_worker=data_provider_cfg.get('num_workers', 4)
     )
+    
+    # Validation data config
+    val_cfg = PacmanDatasetProviderConfig(
+        name=data_provider_cfg.get('name', 'SimplePacmanDatasetProvider'),
+        dataset_name="Tahahah/PacmanDataset_2",  # Use different dataset for validation
+        split="train",  # Use train split as validation
+        image_size=data_provider_cfg.get('image_size', 512),
+        verification_mode=data_provider_cfg.get('verification_mode', 'no_checks'),
+        streaming=True,  # Use streaming for validation too
+        batch_size=data_provider_cfg.get('batch_size', 16),
+        n_worker=data_provider_cfg.get('num_workers', 4)
+    )
 
     # Initialize data provider with distributed info
-    data_cfg.num_replicas = get_dist_size()
-    data_cfg.rank = get_dist_rank()
-    data_provider = SimplePacmanDatasetProvider(data_cfg)
+    train_cfg.num_replicas = get_dist_size()
+    train_cfg.rank = get_dist_rank()
+    val_cfg.num_replicas = get_dist_size()
+    val_cfg.rank = get_dist_rank()
+    
+    # Create data providers
+    train_provider = SimplePacmanDatasetProvider(train_cfg)
+    val_provider = SimplePacmanDatasetProvider(val_cfg)
+    
+    # Combine into a single provider
+    class CombinedProvider:
+        def __init__(self, train_provider, val_provider):
+            self.train = train_provider.train
+            self.valid = val_provider.train
+    
+    data_provider = CombinedProvider(train_provider, val_provider)
     
     # Setup system
     os.makedirs(args.output_dir, exist_ok=True)
@@ -212,7 +239,7 @@ def main():
     setup_wandb(config)
     logger.info("Initialized Weights & Biases logging")
     
-    logger.info(f"Created data provider with batch size {data_cfg.batch_size}")
+    logger.info(f"Created data provider with batch size {train_cfg.batch_size}")
     
     # Load pretrained model
     logger.info(f"Loading pretrained model from {args.pretrained}")

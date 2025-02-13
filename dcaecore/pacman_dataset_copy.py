@@ -17,6 +17,9 @@ class PacmanDatasetProviderConfig(BaseDataProviderConfig):
     streaming: bool = True
     batch_size: int = 32
     n_worker: int = 1
+    max_samples: Optional[int] = None  # Added max_samples parameter
+    num_replicas: int = 1
+    rank: int = 0
 
 class SimplePacmanDataset(Dataset):
     def __init__(self, cfg: PacmanDatasetProviderConfig, transform=None):
@@ -41,6 +44,8 @@ class SimplePacmanDataset(Dataset):
     def __len__(self):
         if self.cfg.streaming:
             return int(1000)  # Effectively infinite for streaming dataset
+        if self.cfg.max_samples is not None:
+            return min(len(self.dataset), self.cfg.max_samples)
         return len(self.dataset)
     
     def __getitem__(self, idx):
@@ -60,26 +65,31 @@ class SimplePacmanDataset(Dataset):
             return {"data": torch.zeros(3, self.cfg.image_size, self.cfg.image_size)}
 
 class SimplePacmanDatasetProvider(BaseDataProvider):
-    def __init__(self, cfg: PacmanDatasetProviderConfig):
-        super().__init__(cfg)
-        self.cfg: PacmanDatasetProviderConfig
-    
-    def build_transform(self):
-        return T.Compose([
-            T.Resize(self.cfg.image_size),
-            T.CenterCrop(self.cfg.image_size),
-            T.ToTensor(),
-            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
-    
-    def build_datasets(self) -> Tuple[Dataset, Optional[Dataset], Optional[Dataset]]:
-        transform = self.build_transform()
-        # Create train dataset
-        train_dataset = SimplePacmanDataset(
-            self.cfg,
-            transform=transform
+    def __init__(self, data_config: PacmanDatasetProviderConfig):
+        super().__init__(data_config)
+        self.data_config = data_config
+        
+        # Create dataset
+        dataset = SimplePacmanDataset(data_config)
+        
+        # Create sampler for distributed training
+        sampler = torch.utils.data.distributed.DistributedSampler(
+            dataset,
+            num_replicas=data_config.num_replicas,
+            rank=data_config.rank,
+            shuffle=True
+        ) if data_config.num_replicas > 1 else None
+        
+        # Create dataloader
+        self.train = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=data_config.batch_size,
+            num_workers=data_config.n_worker,
+            sampler=sampler,
+            drop_last=True
         )
-        # We don't have validation/test splits for now
-        val_dataset = train_dataset
-        test_dataset = train_dataset
-        return train_dataset, val_dataset, test_dataset
+        
+        # For validation/test, we use the same dataset instance but with different settings
+        if not data_config.streaming:  # Only create val/test if not streaming
+            self.valid = self.train  # Use same loader for validation
+            self.test = self.train   # Use same loader for testing
