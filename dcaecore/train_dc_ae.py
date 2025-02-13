@@ -103,12 +103,13 @@ def create_run_config(config: dict) -> DCAERunConfig:
     return run_config
 
 def setup_device(gpu):
-    if gpu is not None:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        torch.cuda.set_device(device)
+    if gpu is not None and torch.cuda.is_available():
+        torch.cuda.set_device(gpu)  # Set device using integer index directly
+        device = torch.device(f"cuda:{gpu}")
     else:
-        device = torch.device("cpu")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            torch.cuda.set_device(0)
     return device
 
 def setup_seed(seed):
