@@ -105,8 +105,9 @@ def create_run_config(config: dict) -> DCAERunConfig:
 def setup_dist_env(gpu):
     if gpu is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        torch.cuda.set_device(device)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            torch.cuda.set_device(0)  # Use first GPU
     else:
         device = torch.device("cpu")
     return device
