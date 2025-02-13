@@ -1,0 +1,68 @@
+model:
+  in_channels: 3
+  latent_channels: 32
+  encoder:
+    width_list: [128, 256, 512, 512, 1024, 1024]
+    depth_list: [2, 2, 2, 2, 2, 2]
+    block_type: "ResBlock"
+    norm: "trms2d"
+    act: "silu"
+    downsample_block_type: "ConvPixelUnshuffle"
+    downsample_match_channel: true
+    downsample_shortcut: "averaging"
+    out_norm: null
+    out_act: null
+    out_shortcut: "averaging"
+    double_latent: false
+  decoder:
+    width_list: [128, 256, 512, 512, 1024, 1024]
+    depth_list: [2, 2, 2, 2, 2, 2]
+    block_type: "ResBlock"
+    norm: "trms2d"
+    act: "silu"
+    upsample_block_type: "ConvPixelShuffle"
+    upsample_match_channel: true
+    upsample_shortcut: "duplicating"
+    out_norm: "trms2d"
+    out_act: "relu"
+  use_quant_conv: false
+  scaling_factor: null
+
+# Dataset config
+dataset:
+  name: "SimplePacmanDataset"
+  dataset_name: "Tahahah/PacmanDataset_3"
+  split: "train"
+  image_size: 512
+  verification_mode: "no_checks"
+  streaming: true
+  batch_size: 32
+
+# Training config
+resume: true
+num_epochs: 100  # Adjust as needed
+clip_grad: 1.0
+save_checkpoint_steps: 1000
+
+# Optimizer
+optimizer:
+  name: adamw
+  lr: 1.0e-4
+  warmup_lr: 0.0
+  weight_decay: 0.05
+  betas: [0.9, 0.999]
+
+# Learning rate scheduler
+lr_scheduler:
+  name: cosine_annealing
+  warmup_steps: 1000
+
+# EMA
+ema_decay: 0.9998
+ema_warmup_steps: 2000
+evaluate_ema: true
+
+# Logging
+log: true
+wandb_entity: null  # Set your wandb entity
+wandb_project: dcae
