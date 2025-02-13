@@ -102,29 +102,72 @@ def create_run_config(config: dict) -> DCAERunConfig:
     
     return run_config
 
+def setup_dist_env(gpu):
+    if gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch.cuda.set_device(device)
+    else:
+        device = torch.device("cpu")
+    return device
+
+def setup_seed(seed, resume=False):
+    if not resume:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+def get_dist_size():
+    if not torch.distributed.is_initialized():
+        return 1
+    return torch.distributed.get_world_size()
+
+def get_dist_rank():
+    if not torch.distributed.is_initialized():
+        return 0
+    return torch.distributed.get_rank()
+
 def main():
-    parser = argparse.ArgumentParser(description='Train DCAE model')
-    parser.add_argument('--config', type=str, required=True, help='Path to config file')
-    parser.add_argument('--pretrained', type=str, default='mit-han-lab/dc-ae-f32c32-in-1.0', help='Pretrained model name or path')
-    parser.add_argument('--output_dir', type=str, required=True, help='Output directory')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to config file")
+    parser.add_argument("--pretrained", type=str, required=True, help="Path to pretrained model")
+    parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--gpu", type=str, help="Comma-separated list of GPU IDs to use")
     args = parser.parse_args()
+
+    # Setup distributed environment
+    device = setup_dist_env(args.gpu)
+    setup_seed(args.seed, resume=False)
+
+    # Load config
+    with open(args.config) as f:
+        config = yaml.safe_load(f)
     
-    # Load configuration
-    config = load_config(args.config)
+    # Create data config
+    data_cfg = PacmanDatasetProviderConfig(
+        batch_size=config["train"]["batch_size"],
+        n_worker=config["train"]["num_workers"]
+    )
+
+    # Initialize data provider with distributed info
+    data_cfg.num_replicas = get_dist_size()
+    data_cfg.rank = get_dist_rank()
+    data_provider = SimplePacmanDatasetProvider(data_cfg)
     
     # Setup system
     os.makedirs(args.output_dir, exist_ok=True)
     logger = setup_logger(args.output_dir)
-    set_random_seed(config['system']['seed'])
-    logger.info(f"Set random seed to {config['system']['seed']}")
+    logger.info(f"Set random seed to {args.seed}")
     
     # Initialize wandb
     setup_wandb(config)
     logger.info("Initialized Weights & Biases logging")
     
-    # Create data provider
-    data_cfg = PacmanDatasetProviderConfig(**config['data_provider'])
-    data_provider = SimplePacmanDatasetProvider(data_cfg)
     logger.info(f"Created data provider with batch size {data_cfg.batch_size}")
     
     # Load pretrained model
