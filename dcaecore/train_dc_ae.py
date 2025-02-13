@@ -151,8 +151,8 @@ def main():
     
     # Create data config
     data_cfg = PacmanDatasetProviderConfig(
-        batch_size=config["train"]["batch_size"],
-        n_worker=config["train"]["num_workers"]
+        batch_size=config["data_provider"]["batch_size"],
+        n_worker=config.get("data_provider", {}).get("num_workers", 4)  # Default to 4 workers if not specified
     )
 
     # Initialize data provider with distributed info
