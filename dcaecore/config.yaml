@@ -53,6 +53,6 @@ logging:
 # Hardware/System settings
 system:
   seed: 42
-  num_workers: 4
+  num_workers: 1
   pin_memory: true
   cudnn_benchmark: true
