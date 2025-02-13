@@ -19,7 +19,10 @@ from dcaecore.train_dc_ae import (
     load_config, 
     create_run_config, 
     setup_logger,
-    set_random_seed
+    set_random_seed,
+    setup_dist_env,
+    get_dist_size,
+    get_dist_rank
 )
 from efficientvit.ae_model_zoo import DCAE_HF
 from dcaecore.trainer import DCAETrainer
@@ -83,33 +86,48 @@ def visualize_reconstructions(model, sample_batch, save_dir: str, step: str, ite
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='Path to config file')
-    parser.add_argument('--model_path', type=str, required=True, help='Path to initial model')
+    parser.add_argument('--model_path', type=str, required=True, 
+                       help='Path to initial model or HuggingFace model name (e.g., "username/model-name")')
     parser.add_argument('--save_dir', type=str, required=True, help='Directory to save models')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument("--gpu", type=str, help="Comma-separated list of GPU IDs to use")
     args = parser.parse_args()
 
-    # Set random seed
+    # Setup distributed environment and seed
+    device = setup_dist_env(args.gpu)
     set_random_seed(args.seed)
-
-    # Setup device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Load config and setup
     config = load_config(args.config)
     logger = setup_logger(args.save_dir)
     
     # Initialize model and load weights
-    model = DCAE_HF()
-    model.load_state_dict(torch.load(args.model_path))
+    model = DCAE_HF().from_pretrained(args.model_path)
     model = model.to(device)
-
+    
     # Setup dataset for visualization
-    dataset_config = PacmanDatasetProviderConfig(**config.get('dataset', {}))
-    dataset_provider = SimplePacmanDatasetProvider(dataset_config)
-    val_loader = dataset_provider.val_loader
+    data_provider_cfg = config.get('data_provider', {})
+    data_cfg = PacmanDatasetProviderConfig(
+        name=data_provider_cfg.get('name', 'SimplePacmanDatasetProvider'),
+        train_dataset=data_provider_cfg.get('train_dataset', 'Tahahah/PacmanDataset_3'),
+        val_dataset=data_provider_cfg.get('val_dataset', 'Tahahah/PacmanDataset_3'),
+        train_split=data_provider_cfg.get('train_split', 'train'),
+        val_split=data_provider_cfg.get('val_split', 'train'),
+        image_size=data_provider_cfg.get('image_size', 512),
+        verification_mode=data_provider_cfg.get('verification_mode', 'no_checks'),
+        streaming=data_provider_cfg.get('streaming', True),
+        batch_size=data_provider_cfg.get('batch_size', 16),
+        n_worker=data_provider_cfg.get('num_workers', 4),
+        val_steps=data_provider_cfg.get('val_steps', 100)
+    )
 
+    # Initialize data provider with distributed info
+    data_cfg.num_replicas = get_dist_size()
+    data_cfg.rank = get_dist_rank()
+    dataset_provider = SimplePacmanDatasetProvider(data_cfg)
+    
     # Get a sample batch for visualization
-    sample_batch = next(iter(val_loader))
+    sample_batch = next(iter(dataset_provider.val_loader))
 
     iteration = 0
     while True:
