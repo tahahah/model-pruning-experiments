@@ -7,7 +7,7 @@ from datasets import load_dataset
 from torch.utils.data import IterableDataset
 from PIL import Image
 
-from efficientvit.diffusioncore.data_provider.base_data_provider import BaseDataProvider
+from efficientvit.diffusioncore.data_provider.base import BaseDataProvider
 
 
 @dataclass
