@@ -61,13 +61,13 @@ class SimplePacmanDataset(IterableDataset):
             if len(batch) == self.cfg.batch_size:
                 # Stack the batch of images and yield
                 images = torch.stack(batch)
-                yield {"image": images}
+                yield {"data": images}
                 batch = []
 
         # Yield remaining images if any
         if batch:
             images = torch.stack(batch)
-            yield {"image": images}
+            yield {"data": images}
 
 
 class SimplePacmanDatasetProvider(BaseDataProvider):

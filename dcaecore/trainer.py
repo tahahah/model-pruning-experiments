@@ -1,211 +1,190 @@
-import os
-import sys
-from dataclasses import dataclass, field
-from typing import Any, Optional
-
-import torch
-import wandb
-from omegaconf import OmegaConf
-from tqdm import tqdm
-
-from efficientvit.apps.utils.dist import dist_barrier, get_dist_size, is_dist_initialized, is_master, sync_tensor
-from efficientvit.apps.utils.ema import EMA
-from efficientvit.apps.utils.lr import ConstantLRwithWarmup
+from efficientvit.apps.trainer import Trainer
+from efficientvit.apps.trainer.run_config import RunConfig
+from efficientvit.apps.utils import dist_barrier, is_master
 from efficientvit.apps.utils.metric import AverageMeter
-from efficientvit.models.efficientvit.dc_ae import DCAE, DCAEConfig
-from pacman_dataset_copy import SimplePacmanDataset, PacmanDatasetProviderConfig
+from efficientvit.models.efficientvit.dc_ae import DCAE
+from torchmetrics.image import LearnedPerceptualImagePatchSimilarity, StructuralSimilarityIndexMeasure
+from efficientvit.apps.metrics.psnr.psnr import PSNRStats, PSNRStatsConfig
+import torch
+import torch.nn.functional as F
+from typing import Any, Dict
+import os
+from tqdm import tqdm
+import torchvision
 
-__all__ = ["OptimizerConfig", "LRSchedulerConfig", "DCAETrainerConfig", "DCAETrainer"]
+class DCAERunConfig(RunConfig):
+    def __init__(self, 
+                 reconstruction_weight: float = 1.0,
+                 perceptual_weight: float = 0.1,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.reconstruction_weight = reconstruction_weight
+        self.perceptual_weight = perceptual_weight
 
-
-@dataclass
-class OptimizerConfig:
-    name: str = "adamw"
-    lr: float = 1e-4
-    warmup_lr: float = 0.0
-    weight_decay: float = 0.05
-    no_wd_keys: tuple[str, ...] = ()
-    betas: tuple[float, float] = (0.9, 0.999)
-
-
-@dataclass
-class LRSchedulerConfig:
-    name: Any = "cosine_annealing"
-    warmup_steps: int = 1000
-
-
-@dataclass
-class DCAETrainerConfig:
-    # Model config
-    model: DCAEConfig = field(default_factory=DCAEConfig)
-    
-    # Training dataset config
-    dataset: PacmanDatasetProviderConfig = field(default_factory=PacmanDatasetProviderConfig)
-    
-    # Training config
-    resume: bool = True
-    resume_path: Optional[str] = None
-    resume_schedule: bool = True
-    num_epochs: Optional[int] = None
-    max_steps: Optional[int] = None
-    clip_grad: Optional[float] = None
-    save_checkpoint_steps: int = 1000
-    
-    # Optimizer and scheduler
-    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
-    lr_scheduler: LRSchedulerConfig = field(default_factory=LRSchedulerConfig)
-    
-    # Logging
-    log: bool = True
-    wandb_entity: Optional[str] = None
-    wandb_project: Optional[str] = "dcae"
-    
-    # EMA
-    ema_decay: float = 0.9998
-    ema_warmup_steps: int = 2000
-    evaluate_ema: bool = True
-    
-    # Device
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    seed: int = 42
-
-
-class DCAETrainer:
-    def __init__(self, cfg: DCAETrainerConfig):
-        self.cfg = cfg
-        self.device = torch.device(cfg.device)
+class DCAETrainer(Trainer):
+    def __init__(self, path: str, model: DCAE, data_provider):
+        super().__init__(path, model, data_provider)
+        # Initialize metrics
+        self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).cuda()
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=(0.0, 255.0)).cuda()
+        self.psnr_stats = PSNRStats(PSNRStatsConfig())
         
-        # Set random seed
-        torch.manual_seed(cfg.seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(cfg.seed)
-            
-        # Initialize model
-        self.model = DCAE(cfg.model).to(self.device)
+    def _validate(self, model, data_loader, epoch) -> Dict[str, Any]:
+        model.eval()
+        val_loss = AverageMeter(is_distributed=False)
+        val_recon_loss = AverageMeter(is_distributed=False)
+        val_perceptual_loss = AverageMeter(is_distributed=False)
+        val_psnr = AverageMeter(is_distributed=False)
+        val_ssim = AverageMeter(is_distributed=False)
+        val_lpips = AverageMeter(is_distributed=False)
         
-        # Setup optimizer
-        self.optimizer = torch.optim.AdamW(
-            self.model.parameters(),
-            lr=cfg.optimizer.lr,
-            betas=cfg.optimizer.betas,
-            weight_decay=cfg.optimizer.weight_decay
-        )
+        with torch.no_grad():
+            with tqdm(total=len(data_loader), desc=f"Validation Epoch #{epoch}") as t:
+                for batch_id, feed_dict in enumerate(data_loader):
+                    images = feed_dict["data"].cuda()
+                    
+                    # Forward pass
+                    with torch.cuda.amp.autocast(enabled=self.enable_amp):
+                        encoded = self.model.encode(images)
+                        reconstructed = self.model.decode(encoded)
+                        
+                        # Calculate losses
+                        recon_loss = F.mse_loss(reconstructed, images)
+                        perceptual_loss = self.lpips(reconstructed * 0.5 + 0.5, images * 0.5 + 0.5)
+                        total_loss = (self.run_config.reconstruction_weight * recon_loss + 
+                                    self.run_config.perceptual_weight * perceptual_loss)
+                        
+                        # Calculate metrics
+                        images_uint8 = (255 * ((images + 1) / 2) + 0.5).clamp(0, 255).to(torch.uint8)
+                        recon_uint8 = (255 * ((reconstructed + 1) / 2) + 0.5).clamp(0, 255).to(torch.uint8)
+                        
+                        ssim_val = self.ssim(images_uint8, recon_uint8)
+                        self.psnr_stats.add_data(images_uint8, recon_uint8)
+                        psnr_val = self.psnr_stats.compute()
+                        
+                    # Update metrics
+                    val_loss.update(total_loss.item(), images.size(0))
+                    val_recon_loss.update(recon_loss.item(), images.size(0))
+                    val_perceptual_loss.update(perceptual_loss.item(), images.size(0))
+                    val_psnr.update(psnr_val, images.size(0))
+                    val_ssim.update(ssim_val.item(), images.size(0))
+                    val_lpips.update(perceptual_loss.item(), images.size(0))
+                    
+                    # Update progress bar
+                    t.set_postfix({
+                        'loss': val_loss.avg,
+                        'recon_loss': val_recon_loss.avg,
+                        'perceptual_loss': val_perceptual_loss.avg,
+                        'psnr': val_psnr.avg,
+                        'ssim': val_ssim.avg,
+                        'lpips': val_lpips.avg
+                    })
+                    t.update()
+                    
+                    # Save sample reconstructions
+                    if batch_id == 0 and is_master():
+                        sample_dir = os.path.join(self.path, "samples", f"epoch_{epoch}")
+                        os.makedirs(sample_dir, exist_ok=True)
+                        
+                        for i in range(min(8, images.size(0))):
+                            sample_path = os.path.join(sample_dir, f"sample_{i}.png")
+                            sample_image = torch.cat([
+                                images[i:i+1] * 0.5 + 0.5,
+                                reconstructed[i:i+1] * 0.5 + 0.5
+                            ], dim=-1)
+                            torchvision.utils.save_image(sample_image, sample_path)
         
-        # Setup learning rate scheduler
-        self.lr_scheduler = ConstantLRwithWarmup(
-            optimizer=self.optimizer,
-            warmup_steps=cfg.lr_scheduler.warmup_steps,
-            warmup_init_lr=cfg.optimizer.warmup_lr,
-            max_lr=cfg.optimizer.lr,
-        )
-        
-        # Setup EMA
-        self.ema = EMA(self.model, cfg.ema_decay, cfg.ema_warmup_steps)
-        
-        # Setup logging
-        if cfg.log and is_master():
-            self.setup_wandb()
-            
-        self.global_step = 0
-        self.start_epoch = 0
-        if cfg.resume:
-            self.try_resume_from_checkpoint()
-            
-        # Initialize loss tracking
-        self.train_loss = AverageMeter()
-        
-    def setup_wandb(self):
-        wandb.init(
-            entity=self.cfg.wandb_entity,
-            project=self.cfg.wandb_project,
-            config=OmegaConf.to_container(self.cfg, resolve=True),
-        )
-        
-    def try_resume_from_checkpoint(self):
-        if self.cfg.resume_path is not None and os.path.exists(self.cfg.resume_path):
-            print(f"Resuming from checkpoint: {self.cfg.resume_path}")
-            checkpoint = torch.load(self.cfg.resume_path, map_location=self.device)
-            self.model.load_state_dict(checkpoint["model"])
-            if self.cfg.resume_schedule:
-                self.optimizer.load_state_dict(checkpoint["optimizer"])
-                self.lr_scheduler.load_state_dict(checkpoint["scheduler"])
-                self.global_step = checkpoint["global_step"]
-                self.start_epoch = checkpoint["epoch"]
-            
-    def save_checkpoint(self, epoch):
-        if not is_master():
-            return
-            
-        checkpoint = {
-            "model": self.model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "scheduler": self.lr_scheduler.state_dict(),
-            "global_step": self.global_step,
-            "epoch": epoch,
+        return {
+            "val_loss": val_loss.avg,
+            "val_recon_loss": val_recon_loss.avg,
+            "val_perceptual_loss": val_perceptual_loss.avg,
+            "val_psnr": val_psnr.avg,
+            "val_ssim": val_ssim.avg,
+            "val_lpips": val_lpips.avg
         }
         
-        save_path = f"checkpoints/dcae_step_{self.global_step}.pth"
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        torch.save(checkpoint, save_path)
+    def run_step(self, feed_dict):
+        images = feed_dict["data"]
         
-    def train_step(self, batch):
-        self.model.train()
-        images = batch["image"].to(self.device)
-        
-        # Forward pass through DCAE
-        reconstructed = self.model(images, self.global_step)
-        loss = torch.nn.functional.mse_loss(reconstructed, images)
-        
-        # Backward pass
-        self.optimizer.zero_grad()
-        loss.backward()
-        
-        if self.cfg.clip_grad is not None:
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.clip_grad)
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            # Forward pass through DCAE
+            encoded = self.model.encode(images)
+            reconstructed = self.model.decode(encoded)
             
-        self.optimizer.step()
-        self.lr_scheduler.step()
-        self.ema.step()
+            # Reconstruction loss (MSE)
+            recon_loss = F.mse_loss(reconstructed, images)
+            
+            # Perceptual loss (LPIPS)
+            perceptual_loss = self.lpips(reconstructed * 0.5 + 0.5, images * 0.5 + 0.5)
+            
+            # Total loss
+            total_loss = (self.run_config.reconstruction_weight * recon_loss + 
+                         self.run_config.perceptual_weight * perceptual_loss)
+            
+        return {
+            "loss": total_loss,
+            "recon_loss": recon_loss,
+            "perceptual_loss": perceptual_loss,
+            "reconstructed": reconstructed
+        }
         
-        return loss.item()
+    def _train_one_epoch(self, epoch):
+        train_loss = AverageMeter(is_distributed=False)
+        train_recon_loss = AverageMeter(is_distributed=False)
+        train_perceptual_loss = AverageMeter(is_distributed=False)
+        
+        with tqdm(total=len(self.data_provider.train), desc=f"Training Epoch #{epoch}") as t:
+            for feed_dict in self.data_provider.train:
+                feed_dict = self.before_step(feed_dict)
+                self.optimizer.zero_grad()
+                
+                output_dict = self.run_step(feed_dict)
+                
+                # Scale loss and backward
+                self.scaler.scale(output_dict["loss"]).backward()
+                
+                # Update metrics
+                train_loss.update(output_dict["loss"].item(), feed_dict["data"].size(0))
+                train_recon_loss.update(output_dict["recon_loss"].item(), feed_dict["data"].size(0))
+                train_perceptual_loss.update(output_dict["perceptual_loss"].item(), feed_dict["data"].size(0))
+                
+                # Optimizer step
+                self.after_step()
+                
+                # Update progress bar
+                t.set_postfix({
+                    'loss': train_loss.avg,
+                    'recon_loss': train_recon_loss.avg,
+                    'perceptual_loss': train_perceptual_loss.avg,
+                    'lr': self.optimizer.param_groups[0]["lr"]
+                })
+                t.update()
+        
+        return {
+            "train_loss": train_loss.avg,
+            "train_recon_loss": train_recon_loss.avg,
+            "train_perceptual_loss": train_perceptual_loss.avg,
+        }
         
     def train(self):
-        """Main training loop"""
-        # Setup dataset
-        train_dataset = SimplePacmanDataset(self.cfg.dataset)
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset,
-            batch_size=None,  # Batch size is handled by the dataset
-            num_workers=4,
-            pin_memory=True,
-        )
-        
-        epoch = self.start_epoch
-        while True:
-            self.train_loss.reset()
+        for epoch in range(self.start_epoch, self.run_config.num_epochs):
+            train_info = self.train_one_epoch(epoch)
+            val_info = self.validate(epoch=epoch)
             
-            for batch in tqdm(train_loader, desc=f"Epoch {epoch}"):
-                loss = self.train_step(batch)
-                self.train_loss.update(loss)
-                
-                if self.global_step % 100 == 0 and is_master():
-                    if self.cfg.log:
-                        wandb.log(
-                            {
-                                "train/loss": self.train_loss.avg,
-                                "train/lr": self.lr_scheduler.get_last_lr()[0],
-                            },
-                            step=self.global_step,
-                        )
-                        
-                if self.global_step % self.cfg.save_checkpoint_steps == 0:
-                    self.save_checkpoint(epoch)
-                    
-                self.global_step += 1
-                
-                if self.cfg.max_steps is not None and self.global_step >= self.cfg.max_steps:
-                    return
-                    
-            epoch += 1
-            if self.cfg.num_epochs is not None and epoch >= self.cfg.num_epochs:
-                return
+            # Log training info
+            log_str = f"Epoch {epoch}: "
+            log_str += f"train_loss={train_info['train_loss']:.4f}, "
+            log_str += f"val_loss={val_info['val_loss']:.4f}, "
+            log_str += f"val_psnr={val_info['val_psnr']:.2f}, "
+            log_str += f"val_ssim={val_info['val_ssim']:.4f}, "
+            log_str += f"val_lpips={val_info['val_lpips']:.4f}"
+            self.write_log(log_str)
+            
+            # Save checkpoint
+            if val_info["val_loss"] < self.best_val:
+                self.best_val = val_info["val_loss"]
+                self.save_model(epoch=epoch, model_name="best.pt")
+            
+            # Regular checkpoint
+            if (epoch + 1) % self.run_config.save_interval == 0:
+                self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")

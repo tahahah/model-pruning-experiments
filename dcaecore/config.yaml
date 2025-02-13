@@ -1,68 +1,73 @@
-model:
-  in_channels: 3
-  latent_channels: 32
-  encoder:
-    width_list: [128, 256, 512, 512, 1024, 1024]
-    depth_list: [2, 2, 2, 2, 2, 2]
-    block_type: "ResBlock"
-    norm: "trms2d"
-    act: "silu"
-    downsample_block_type: "ConvPixelUnshuffle"
-    downsample_match_channel: true
-    downsample_shortcut: "averaging"
-    out_norm: null
-    out_act: null
-    out_shortcut: "averaging"
-    double_latent: false
-  decoder:
-    width_list: [128, 256, 512, 512, 1024, 1024]
-    depth_list: [2, 2, 2, 2, 2, 2]
-    block_type: "ResBlock"
-    norm: "trms2d"
-    act: "silu"
-    upsample_block_type: "ConvPixelShuffle"
-    upsample_match_channel: true
-    upsample_shortcut: "duplicating"
-    out_norm: "trms2d"
-    out_act: "relu"
-  use_quant_conv: false
-  scaling_factor: null
 
-# Dataset config
-dataset:
-  name: "SimplePacmanDataset"
+# Dataset Configuration
+data_provider:
+  name: "SimplePacmanDatasetProvider"
   dataset_name: "Tahahah/PacmanDataset_3"
   split: "train"
   image_size: 512
   verification_mode: "no_checks"
   streaming: true
-  batch_size: 32
+  batch_size: 16
 
-# Training config
-resume: true
-num_epochs: 100  # Adjust as needed
-clip_grad: 1.0
-save_checkpoint_steps: 1000
+# Training Configuration
+trainer:
+  # Basic training settings
+  num_epochs: 100
+  save_interval: 5  # Save checkpoint every N epochs
+  eval_interval: 1  # Run validation every N epochs
+  
+  # Loss weights
+  reconstruction_weight: 1.0
+  perceptual_weight: 0.1
+  
+  # Optimizer settings
+  optimizer:
+    name: "adamw"
+    lr: 1.0e-4
+    weight_decay: 0.05
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+  
+  # Learning rate scheduler
+  lr_scheduler:
+    name: "cosine"
+    warmup_epochs: 5
+    warmup_lr: 1.0e-6
+    min_lr: 1.0e-6
+  
+  # Gradient clipping
+  grad_clip: 1.0
+  
+  # Mixed precision training
+  amp: "fp16"  # Options: "fp32", "fp16", "bf16"
+  
+  # EMA settings
+  ema:
+    enabled: true
+    decay: 0.9998
+    warmup_steps: 2000
+  
+  # Checkpointing
+  resume: true  # Resume from latest checkpoint if available
+  checkpoint_dir: "checkpoints"
+  
+  # Logging
+  logging:
+    enabled: true
+    log_interval: 100  # Log every N steps
+    save_images: true
+    num_save_images: 8  # Number of sample images to save during validation
+    
+    # Wandb logging
+    wandb:
+      enabled: true
+      project: "dcae finetuning"
+      entity: null  # Set your wandb entity
+      tags: ["dcae", "autoencoder"]
 
-# Optimizer
-optimizer:
-  name: adamw
-  lr: 1.0e-4
-  warmup_lr: 0.0
-  weight_decay: 0.05
-  betas: [0.9, 0.999]
-
-# Learning rate scheduler
-lr_scheduler:
-  name: cosine_annealing
-  warmup_steps: 1000
-
-# EMA
-ema_decay: 0.9998
-ema_warmup_steps: 2000
-evaluate_ema: true
-
-# Logging
-log: true
-wandb_entity: null  # Set your wandb entity
-wandb_project: dcae
+# Hardware/System settings
+system:
+  seed: 42
+  num_workers: 4
+  pin_memory: true
+  cudnn_benchmark: true
