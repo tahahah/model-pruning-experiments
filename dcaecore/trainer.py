@@ -100,6 +100,21 @@ class DCAETrainer(Trainer):
                     val_ssim.update(ssim_val.item(), images.size(0))
                     val_lpips.update(perceptual_loss.item(), images.size(0))
                     
+                    # Log validation metrics
+                    if self.write_val_log:
+                        self.write_metric(
+                            {
+                                "val/loss": total_loss.item(),
+                                "val/recon_loss": recon_loss.item(),
+                                "val/perceptual_loss": perceptual_loss.item(),
+                                "val/psnr": psnr_val,
+                                "val/ssim": ssim_val.item(),
+                                "val/lpips": perceptual_loss.item(),
+                                "val/epoch": epoch,
+                            },
+                            "val",
+                        )
+                    
                     # Update progress bar
                     t.set_postfix({
                         'loss': val_loss.avg,
@@ -124,10 +139,15 @@ class DCAETrainer(Trainer):
                             ], dim=-1)
                             torchvision.utils.save_image(sample_image, sample_path)
                             
-                        if wandb_available and wandb.run is not None:
-                            wandb.log({
-                                "val/reconstructions": [wandb.Image(sample_path) for sample_path in os.listdir(sample_dir)]
-                            }, step=epoch)
+                        if self.write_val_log:
+                            self.write_metric(
+                                {
+                                    "val/reconstructions": [
+                                        self.save_image(sample_path) for sample_path in os.listdir(sample_dir)
+                                    ]
+                                },
+                                "val",
+                            )
         
         metrics = {
             "val/loss": val_loss.avg,
@@ -138,9 +158,6 @@ class DCAETrainer(Trainer):
             "val/lpips": val_lpips.avg
         }
         
-        if wandb_available and wandb.run is not None:
-            wandb.log(metrics, step=epoch)
-            
         return metrics
         
     def run_step(self, feed_dict):
@@ -193,6 +210,19 @@ class DCAETrainer(Trainer):
                 train_recon_loss.update(output_dict["recon_loss"].item(), feed_dict["data"].size(0))
                 train_perceptual_loss.update(output_dict["perceptual_loss"].item(), feed_dict["data"].size(0))
                 
+                # Log training metrics
+                if self.write_train_log:
+                    self.write_metric(
+                        {
+                            "train/loss": output_dict["loss"].item(),
+                            "train/recon_loss": output_dict["recon_loss"].item(),
+                            "train/perceptual_loss": output_dict["perceptual_loss"].item(),
+                            "train/lr": self.optimizer.param_groups[0]["lr"],
+                            "train/epoch": epoch,
+                        },
+                        "train",
+                    )
+                
                 # Optimizer step
                 self.after_step()
                 
@@ -212,9 +242,6 @@ class DCAETrainer(Trainer):
             "train/lr": self.optimizer.param_groups[0]["lr"]
         }
         
-        if wandb_available and wandb.run is not None:
-            wandb.log(metrics, step=epoch)
-            
         return metrics
         
     def train(self):
@@ -244,3 +271,9 @@ class DCAETrainer(Trainer):
                     log_str += f", val_ssim={val_info['val/ssim']:.4f}"
                     log_str += f", val_lpips={val_info['val/lpips']:.4f}"
                 self.write_log(log_str)
+
+    def write_metric(self, metric_dict: Dict[str, Any], metric_type: str):
+        """Override write_metric to ensure proper wandb logging"""
+        if wandb_available and wandb.run is not None:
+            wandb.log(metric_dict)
+        super().write_metric(metric_dict, metric_type)

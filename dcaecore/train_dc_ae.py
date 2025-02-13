@@ -222,15 +222,20 @@ def main():
     run_config = create_run_config(config)
     logger.info("Created training configuration")
     
-    # Create trainer
+    # Get logging config
+    logging_cfg = config.get('logging', {})
+    
+    # Create trainer with logging config
     trainer = DCAETrainer(
         path=args.output_dir,
         model=model,
-        data_provider=data_provider
+        data_provider=data_provider,
     )
     
-    # Get logging config
-    logging_cfg = config.get('logging', {})
+    # Configure trainer logging
+    trainer.write_train_log = True  # Enable training step logging
+    trainer.write_val_log = True    # Enable validation step logging
+    trainer.log_interval = logging_cfg.get('log_interval', 100)  # Set logging frequency
     
     # Setup trainer with safe defaults
     trainer.prep_for_training(
