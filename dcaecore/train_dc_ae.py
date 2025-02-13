@@ -113,13 +113,39 @@ def create_run_config(config: dict) -> DCAERunConfig:
     return run_config
 
 def setup_dist_env(gpu):
+    """Setup distributed training environment."""
+    # Set default env vars for distributed training if not set
+    if "RANK" not in os.environ:
+        os.environ["RANK"] = "0"
+    if "WORLD_SIZE" not in os.environ:
+        os.environ["WORLD_SIZE"] = "1"
+    if "MASTER_ADDR" not in os.environ:
+        os.environ["MASTER_ADDR"] = "localhost"
+    if "MASTER_PORT" not in os.environ:
+        os.environ["MASTER_PORT"] = "29500"
+    if "LOCAL_RANK" not in os.environ:
+        os.environ["LOCAL_RANK"] = "0"
+
     if gpu is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        if torch.cuda.is_available():
-            torch.cuda.set_device(0)  # Use first GPU
+    
+    # Initialize process group
+    if not torch.distributed.is_initialized():
+        torch.distributed.init_process_group(
+            backend="nccl" if torch.cuda.is_available() else "gloo",
+            init_method="env://"
+        )
+    
+    # Setup device
+    if torch.cuda.is_available():
+        device = torch.device(f"cuda:{torch.distributed.get_rank()}")
+        torch.cuda.set_device(device)
     else:
         device = torch.device("cpu")
+    
+    # Set cudnn benchmark
+    torch.backends.cudnn.benchmark = True
+    
     return device
 
 def setup_seed(seed, resume=False):
