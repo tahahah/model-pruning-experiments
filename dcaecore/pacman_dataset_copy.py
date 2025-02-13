@@ -94,3 +94,11 @@ class SimplePacmanDatasetProvider(BaseDataProvider):
             pin_memory=True
         )
         return self.train, self.valid, self.valid
+    
+    def set_epoch(self, epoch):
+        """Handle epoch setting for distributed training"""
+        # Only needed for distributed training with DistributedSampler
+        if self.train.sampler is not None:
+            self.train.sampler.set_epoch(epoch)
+        if self.valid.sampler is not None:
+            self.valid.sampler.set_epoch(epoch)
