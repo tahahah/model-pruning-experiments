@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 from PIL import Image
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 from datasets import load_dataset
 from torchvision import transforms
 from efficientvit.aecore.data_provider.base import BaseDataProvider, BaseDataProviderConfig
@@ -23,38 +23,38 @@ class PacmanDatasetProviderConfig(BaseDataProviderConfig):
     rank: int = 0
     val_steps: int = 100
 
-class SimplePacmanDataset(Dataset):
+class StreamingPacmanDataset(IterableDataset):
     def __init__(self, cfg: PacmanDatasetProviderConfig, dataset_name: str, split: str):
+        super().__init__()
         self.cfg = cfg
         self.dataset = load_dataset(
             dataset_name,
             split=split,
-            streaming=cfg.streaming,
+            streaming=True,  # Always use streaming for IterableDataset
             verification_mode=cfg.verification_mode
         )
         self.transform = self.build_transform()
-    
-    def __len__(self):
-        if self.cfg.streaming:
-            return int(1000)  # Effectively infinite for streaming dataset
-        return len(self.dataset)
-    
-    def __getitem__(self, idx):
-        if self.cfg.streaming:
-            # For streaming, get next item from iterator
-            item = next(iter(self.dataset))
-        else:
-            item = self.dataset[idx]
-        
+        self._iterator = None
+
+    def __iter__(self):
+        self._iterator = iter(self.dataset)
+        return self
+
+    def __next__(self):
         try:
-            image = item['frame_image'].convert('RGB')
+            item = next(self._iterator)
+            image = item['frame_image']
+            if not isinstance(image, Image.Image):
+                image = image.convert('RGB')
             image = self.transform(image)
             return {"data": image}
+        except StopIteration:
+            self._iterator = iter(self.dataset)  # Reset iterator
+            raise
         except Exception as e:
-            print(f"Error processing image {item['image']}: {e}")
-            # Return a blank image in case of error
+            print(f"Error processing image: {e}")
             return {"data": torch.zeros(3, self.cfg.image_size, self.cfg.image_size)}
-    
+
     def build_transform(self):
         return transforms.Compose([
             transforms.Resize((self.cfg.image_size, self.cfg.image_size)),
@@ -67,25 +67,19 @@ class SimplePacmanDatasetProvider(BaseDataProvider):
         self.cfg = cfg
         self.train = None
         self.valid = None
+        self.test = None
         self.build_datasets()
     
     def build_datasets(self):
-        train_dataset = SimplePacmanDataset(self.cfg, self.cfg.train_dataset, self.cfg.train_split)
-        val_dataset = SimplePacmanDataset(self.cfg, self.cfg.val_dataset, self.cfg.val_split)
+        # Create streaming datasets
+        train_dataset = StreamingPacmanDataset(self.cfg, self.cfg.train_dataset, self.cfg.train_split)
+        val_dataset = StreamingPacmanDataset(self.cfg, self.cfg.val_dataset, self.cfg.val_split)
         
-        train_sampler = None
-        val_sampler = None
-        
-        if self.cfg.num_replicas > 1:
-            # Add distributed sampler if needed
-            pass
-        
+        # No need for samplers with IterableDataset
         self.train = DataLoader(
             train_dataset,
             batch_size=self.cfg.batch_size,
             num_workers=self.cfg.n_worker,
-            sampler=train_sampler,
-            drop_last=True,
             pin_memory=True
         )
         
@@ -93,13 +87,11 @@ class SimplePacmanDatasetProvider(BaseDataProvider):
             val_dataset,
             batch_size=self.cfg.batch_size,
             num_workers=self.cfg.n_worker,
-            sampler=val_sampler,
-            drop_last=False,
             pin_memory=True
         )
-        return self.train, self.valid, self.valid
+        self.test = self.valid
+        return self.train, self.valid, self.test
     
     def set_epoch(self, epoch):
-        """Override set_epoch to handle epoch updates without requiring sampler.set_epoch"""
-        # Since we're using a streaming dataset, we don't need to actually do anything here
+        """No need to set epoch for streaming datasets"""
         pass
