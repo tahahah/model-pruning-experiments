@@ -17,7 +17,7 @@ class PacmanDatasetProviderConfig(BaseDataProviderConfig):
     streaming: bool = True
     batch_size: int = 32
     n_worker: int = 1
-    max_samples: Optional[int] = None  # Added max_samples parameter
+    max_samples: Optional[int] = None  
     num_replicas: int = 1
     rank: int = 0
 
@@ -43,7 +43,7 @@ class SimplePacmanDataset(Dataset):
     
     def __len__(self):
         if self.cfg.streaming:
-            return int(1000)  # Effectively infinite for streaming dataset
+            return int(1000)  
         if self.cfg.max_samples is not None:
             return min(len(self.dataset), self.cfg.max_samples)
         return len(self.dataset)
@@ -65,31 +65,68 @@ class SimplePacmanDataset(Dataset):
             return {"data": torch.zeros(3, self.cfg.image_size, self.cfg.image_size)}
 
 class SimplePacmanDatasetProvider(BaseDataProvider):
-    def __init__(self, data_config: PacmanDatasetProviderConfig):
-        super().__init__(data_config)
-        self.data_config = data_config
+    def __init__(self, cfg: PacmanDatasetProviderConfig):
+        super().__init__(cfg)
+        self.cfg = cfg
+    
+    def build_transform(self):
+        return T.Compose([
+            T.Resize((self.cfg.image_size, self.cfg.image_size)),
+            T.ToTensor(),
+            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
+    
+    def build_datasets(self) -> Tuple[Dataset, Optional[Dataset], Optional[Dataset]]:
+        # Create train dataset
+        train_dataset = SimplePacmanDataset(self.cfg)
         
-        # Create dataset
-        dataset = SimplePacmanDataset(data_config)
+        # Create validation dataset with PacmanDataset_2
+        val_cfg = PacmanDatasetProviderConfig(
+            **{k: v for k, v in self.cfg.__dict__.items()}  
+        )
+        val_cfg.dataset_name = "Tahahah/PacmanDataset_2"  
+        val_dataset = SimplePacmanDataset(val_cfg)
         
+        # Use same as validation for test
+        test_dataset = val_dataset
+        
+        return train_dataset, val_dataset, test_dataset
+    
+    def build_dataloaders(self, train_dataset: Dataset, val_dataset: Optional[Dataset], test_dataset: Optional[Dataset]):
         # Create sampler for distributed training
         sampler = torch.utils.data.distributed.DistributedSampler(
-            dataset,
-            num_replicas=data_config.num_replicas,
-            rank=data_config.rank,
+            train_dataset,
+            num_replicas=self.cfg.num_replicas,
+            rank=self.cfg.rank,
             shuffle=True
-        ) if data_config.num_replicas > 1 else None
+        ) if self.cfg.num_replicas > 1 else None
         
-        # Create dataloader
+        # Create train dataloader
         self.train = torch.utils.data.DataLoader(
-            dataset,
-            batch_size=data_config.batch_size,
-            num_workers=data_config.n_worker,
+            train_dataset,
+            batch_size=self.cfg.batch_size,
+            num_workers=self.cfg.n_worker,
             sampler=sampler,
             drop_last=True
         )
         
-        # For validation/test, we use the same dataset instance but with different settings
-        if not data_config.streaming:  # Only create val/test if not streaming
-            self.valid = self.train  # Use same loader for validation
-            self.test = self.train   # Use same loader for testing
+        # Create validation dataloader
+        if val_dataset is not None:
+            val_sampler = torch.utils.data.distributed.DistributedSampler(
+                val_dataset,
+                num_replicas=self.cfg.num_replicas,
+                rank=self.cfg.rank,
+                shuffle=False
+            ) if self.cfg.num_replicas > 1 else None
+            
+            self.valid = torch.utils.data.DataLoader(
+                val_dataset,
+                batch_size=self.cfg.batch_size,
+                num_workers=self.cfg.n_worker,
+                sampler=val_sampler,
+                drop_last=False
+            )
+        
+        # Create test dataloader (same as validation for now)
+        if test_dataset is not None:
+            self.test = self.valid
