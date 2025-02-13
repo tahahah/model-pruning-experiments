@@ -12,14 +12,27 @@ import os
 from tqdm import tqdm
 import torchvision
 
+try:
+    import wandb
+    wandb_available = True
+except ImportError:
+    wandb_available = False
+
 class DCAERunConfig(RunConfig):
     def __init__(self, 
                  reconstruction_weight: float = 1.0,
                  perceptual_weight: float = 0.1,
+                 save_interval: int = 5,
+                 eval_interval: int = 1,
                  **kwargs):
         super().__init__(**kwargs)
+        # Model specific parameters
         self.reconstruction_weight = reconstruction_weight
         self.perceptual_weight = perceptual_weight
+        
+        # Training intervals
+        self.save_interval = save_interval
+        self.eval_interval = eval_interval
 
 class DCAETrainer(Trainer):
     def __init__(self, path: str, model: DCAE, data_provider):
@@ -28,6 +41,9 @@ class DCAETrainer(Trainer):
         self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).cuda()
         self.ssim = StructuralSimilarityIndexMeasure(data_range=(0.0, 255.0)).cuda()
         self.psnr_stats = PSNRStats(PSNRStatsConfig())
+        
+        # Initialize best validation score
+        self.best_val = float('inf')
         
     def _validate(self, model, data_loader, epoch) -> Dict[str, Any]:
         model.eval()
@@ -93,15 +109,25 @@ class DCAETrainer(Trainer):
                                 reconstructed[i:i+1] * 0.5 + 0.5
                             ], dim=-1)
                             torchvision.utils.save_image(sample_image, sample_path)
+                            
+                        if wandb_available and wandb.run is not None:
+                            wandb.log({
+                                "val/reconstructions": [wandb.Image(sample_path) for sample_path in os.listdir(sample_dir)]
+                            }, step=epoch)
         
-        return {
-            "val_loss": val_loss.avg,
-            "val_recon_loss": val_recon_loss.avg,
-            "val_perceptual_loss": val_perceptual_loss.avg,
-            "val_psnr": val_psnr.avg,
-            "val_ssim": val_ssim.avg,
-            "val_lpips": val_lpips.avg
+        metrics = {
+            "val/loss": val_loss.avg,
+            "val/recon_loss": val_recon_loss.avg,
+            "val/perceptual_loss": val_perceptual_loss.avg,
+            "val/psnr": val_psnr.avg,
+            "val/ssim": val_ssim.avg,
+            "val/lpips": val_lpips.avg
         }
+        
+        if wandb_available and wandb.run is not None:
+            wandb.log(metrics, step=epoch)
+            
+        return metrics
         
     def run_step(self, feed_dict):
         images = feed_dict["data"]
@@ -160,31 +186,42 @@ class DCAETrainer(Trainer):
                 })
                 t.update()
         
-        return {
-            "train_loss": train_loss.avg,
-            "train_recon_loss": train_recon_loss.avg,
-            "train_perceptual_loss": train_perceptual_loss.avg,
+        metrics = {
+            "train/loss": train_loss.avg,
+            "train/recon_loss": train_recon_loss.avg,
+            "train/perceptual_loss": train_perceptual_loss.avg,
+            "train/lr": self.optimizer.param_groups[0]["lr"]
         }
         
+        if wandb_available and wandb.run is not None:
+            wandb.log(metrics, step=epoch)
+            
+        return metrics
+        
     def train(self):
-        for epoch in range(self.start_epoch, self.run_config.num_epochs):
+        for epoch in range(self.start_epoch, self.run_config.n_epochs):
             train_info = self.train_one_epoch(epoch)
-            val_info = self.validate(epoch=epoch)
             
-            # Log training info
-            log_str = f"Epoch {epoch}: "
-            log_str += f"train_loss={train_info['train_loss']:.4f}, "
-            log_str += f"val_loss={val_info['val_loss']:.4f}, "
-            log_str += f"val_psnr={val_info['val_psnr']:.2f}, "
-            log_str += f"val_ssim={val_info['val_ssim']:.4f}, "
-            log_str += f"val_lpips={val_info['val_lpips']:.4f}"
-            self.write_log(log_str)
-            
-            # Save checkpoint
-            if val_info["val_loss"] < self.best_val:
-                self.best_val = val_info["val_loss"]
-                self.save_model(epoch=epoch, model_name="best.pt")
+            # Run validation if needed
+            if (epoch + 1) % self.run_config.eval_interval == 0:
+                val_info = self.validate(epoch=epoch)
+                
+                # Save best model
+                if val_info["val/loss"] < self.best_val:
+                    self.best_val = val_info["val/loss"]
+                    self.save_model(epoch=epoch, model_name="best.pt")
             
             # Regular checkpoint
             if (epoch + 1) % self.run_config.save_interval == 0:
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
+                
+            # Log training progress
+            if is_master():
+                log_str = f"Epoch {epoch}: "
+                log_str += f"train_loss={train_info['train/loss']:.4f}"
+                if (epoch + 1) % self.run_config.eval_interval == 0:
+                    log_str += f", val_loss={val_info['val/loss']:.4f}"
+                    log_str += f", val_psnr={val_info['val/psnr']:.2f}"
+                    log_str += f", val_ssim={val_info['val/ssim']:.4f}"
+                    log_str += f", val_lpips={val_info['val/lpips']:.4f}"
+                self.write_log(log_str)
