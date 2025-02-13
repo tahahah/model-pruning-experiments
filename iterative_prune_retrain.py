@@ -166,7 +166,7 @@ def main():
             trainer = DCAETrainer(
                 model=pruned_model,
                 path=args.save_dir,
-                dataset_provider=dataset_provider,
+                data_provider=dataset_provider,
             )
             
             # Configure trainer logging

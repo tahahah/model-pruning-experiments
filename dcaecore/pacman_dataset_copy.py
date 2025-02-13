@@ -55,6 +55,8 @@ class StreamingPacmanDataset(IterableDataset):
             print(f"Error processing image: {e}")
             return {"data": torch.zeros(3, self.cfg.image_size, self.cfg.image_size)}
 
+    def __len__(self): return 100
+
     def build_transform(self):
         return transforms.Compose([
             transforms.Resize((self.cfg.image_size, self.cfg.image_size)),

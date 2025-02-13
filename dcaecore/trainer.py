@@ -27,6 +27,7 @@ class DCAERunConfig(RunConfig):
                  save_interval: int = 5,
                  eval_interval: int = 1,
                  log_interval: int = 100,
+                 steps_per_epoch: int = 100,
                  **kwargs):
         super().__init__(**kwargs)
         # Model specific parameters
@@ -37,6 +38,7 @@ class DCAERunConfig(RunConfig):
         self.save_interval = save_interval
         self.eval_interval = eval_interval
         self.log_interval = log_interval
+        self.steps_per_epoch = steps_per_epoch
 
 class DCAETrainer(Trainer):
     def __init__(self, path: str, model: DCAE, data_provider):
@@ -213,8 +215,11 @@ class DCAETrainer(Trainer):
         train_recon_loss = AverageMeter(is_distributed=False)
         train_perceptual_loss = AverageMeter(is_distributed=False)
         
-        with tqdm(total=len(self.data_provider.train), desc=f"Training Epoch #{epoch}") as t:
+        with tqdm(total=self.run_config.steps_per_epoch, desc=f"Training Epoch #{epoch}") as t:
             for step, feed_dict in enumerate(self.data_provider.train):
+                if step >= self.run_config.steps_per_epoch:
+                    break
+                    
                 feed_dict = self.before_step(feed_dict)
                 self.optimizer.zero_grad()
                 
@@ -236,6 +241,7 @@ class DCAETrainer(Trainer):
                         "train/perceptual_loss": output_dict["perceptual_loss"].item(),
                         "train/lr": self.optimizer.param_groups[0]["lr"],
                         "train/epoch": epoch,
+                        "train/step": step + epoch * self.run_config.steps_per_epoch,
                     },
                     "train",
                 )
@@ -246,7 +252,7 @@ class DCAETrainer(Trainer):
                         feed_dict["data"], 
                         output_dict["reconstructed"],
                         prefix="train",
-                        step=step + epoch * len(self.data_provider.train)
+                        step=step + epoch * self.run_config.steps_per_epoch
                     )
                 
                 # Optimizer step
