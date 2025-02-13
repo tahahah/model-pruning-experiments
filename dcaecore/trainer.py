@@ -84,12 +84,16 @@ class DCAETrainer(Trainer):
         val_ssim = AverageMeter(is_distributed=False)
         val_lpips = AverageMeter(is_distributed=False)
         
-        max_val_steps = 100  # Limit validation to 100 steps
-        
         with torch.no_grad():
+            # Limit validation steps
+            max_val_steps = self.data_provider.cfg.val_steps
+            val_iterator = iter(data_loader)
+            
             with tqdm(total=max_val_steps, desc=f"Validation Epoch #{epoch}") as t:
-                for batch_id, feed_dict in enumerate(data_loader):
-                    if batch_id >= max_val_steps:
+                for batch_id in range(max_val_steps):
+                    try:
+                        feed_dict = next(val_iterator)
+                    except StopIteration:
                         break
                         
                     images = feed_dict["data"].cuda()
