@@ -127,9 +127,9 @@ def main():
     # Load pretrained DC-AE model
     print("Loading DC-AE model...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+    print(f"Using device: {device}")
     # Load model with CUDA-optimized configuration
-    model = DCAE_HF.from_pretrained("mit-han-lab/dc-ae-f64c128-in-1.0")
+    model = DCAE_HF.from_pretrained("mit-han-lab/dc-ae-f32c32-in-1.0")
     
     # Move model to device before pruning
     model = model.to(device).eval()
