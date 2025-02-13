@@ -78,6 +78,56 @@ def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
     
     return pruned_model
 
+def plot_weight_distributions(model, output_dir, sparsity):
+    """Plot weight distributions for different layer groups in a memory-efficient way"""
+    plt.figure(figsize=(15, 5))
+    
+    # Define bins once for consistency
+    bins = np.linspace(-0.5, 0.5, 50)
+    
+    # Process encoder and decoder weights separately
+    for subplot_idx, layer_type in enumerate(['encoder', 'decoder'], 1):
+        plt.subplot(1, 2, subplot_idx)
+        
+        # Initialize histogram arrays
+        hist_counts = np.zeros_like(bins[:-1], dtype=np.float64)
+        total_weights = 0
+        
+        # Process weights layer by layer
+        for name, module in model.named_modules():
+            if isinstance(module, (nn.Linear, nn.Conv2d)) and layer_type in name:
+                # Process each weight tensor
+                weights = module.weight.data.cpu().numpy()
+                total_weights += weights.size
+                
+                # Update histogram counts
+                hist, _ = np.histogram(weights.ravel(), bins=bins, density=False)
+                hist_counts += hist
+                
+                # Clear memory
+                del weights
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        
+        # Normalize histogram
+        if total_weights > 0:
+            hist_counts = hist_counts / total_weights
+        
+        # Plot histogram
+        plt.stairs(hist_counts, bins, alpha=0.7)
+        plt.title(f'{layer_type.capitalize()} Weights (Sparsity: {sparsity:.1%})')
+        plt.xlabel('Weight Value')
+        plt.ylabel('Density')
+    
+    plt.tight_layout()
+    
+    # Save plot
+    plot_path = output_dir / f'weight_dist_sparsity_{sparsity:.1f}.png'
+    plt.savefig(plot_path)
+    plt.close()
+    
+    return plot_path
+
 def process_image(model, image_path, output_path, device):
     """Process a single image through the VAE"""
     transform = transforms.Compose([
@@ -153,6 +203,22 @@ def main():
         f.write(f"- Total Parameters: {orig_params:,}\n")
         f.write(f"- Non-zero Parameters: {orig_nonzero:,}\n\n")
         
+        f.write("## Weight Distribution Analysis\n\n")
+        for sparsity in sparsity_levels:
+            print(f"\nAnalyzing weight distributions at sparsity {sparsity:.1f}")
+            current_model = model if sparsity == 0.0 else fine_grained_prune(model, sparsity)
+            current_model = current_model.to(device)
+            
+            # Plot and save weight distributions
+            dist_plot_path = plot_weight_distributions(current_model, output_dir, sparsity)
+            f.write(f"### Sparsity Level: {sparsity:.1%}\n")
+            f.write(f"![Weight Distributions](./output/{dist_plot_path.name})\n\n")
+            
+            # Add layer-wise statistics
+            _, nonzero = analyze_weight_distribution(current_model)
+            param_reduction = 1 - nonzero/orig_nonzero if sparsity > 0 else 0
+            f.write(f"- Parameter Reduction: {param_reduction:.1%}\n\n")
+        
         f.write("## Image Reconstruction Analysis\n\n")
         
         for img_path in image_paths:
@@ -180,7 +246,7 @@ def main():
                 param_reduction = 1 - nonzero/orig_nonzero if sparsity > 0 else 0
                 
                 # Add to markdown
-                f.write(f"| {sparsity:.1%} | ![{output_name}]({output_name}) | {param_reduction:.1%} |\n")
+                f.write(f"| {sparsity:.1%} | ![{output_name}](./output/{output_name}) | {param_reduction:.1%} |\n")
             
             f.write("\n")
 
