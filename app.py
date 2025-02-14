@@ -48,7 +48,7 @@ class PruningUI:
             "num_save_images": 8
         }
     
-    def load_model(self, model_path: str, use_cuda: bool) -> Dict[str, Any]:
+    def load_model(self, model_path: str, use_cuda: bool) -> tuple:
         """Load initial model and update original state"""
         try:
             metrics = self.model_manager.load_initial_model(model_path)
@@ -59,27 +59,26 @@ class PruningUI:
             if torch.cuda.is_available() and use_cuda:
                 self.original_state.vram_usage = torch.cuda.memory_allocated() / 1024**2
             
-            return {
-                "original_metrics": self._format_metrics(self.original_state.metrics),
-                "original_recon": self.original_state.reconstructions,
-                "original_weights": self.original_state.weight_dist,
-                "original_vram": f"VRAM: {self.original_state.vram_usage:.1f}MB"
-            }
+            return (
+                self._format_metrics(self.original_state.metrics),  # metrics textbox
+                self.original_state.reconstructions,                # recon image
+                self.original_state.weight_dist,                   # weights image
+                f"VRAM: {self.original_state.vram_usage:.1f}MB"    # vram textbox
+            )
         except Exception as e:
-            return {
-                "error": str(e),
-                "original_metrics": "Error loading model",
-                "original_recon": None,
-                "original_weights": None,
-                "original_vram": "VRAM: N/A"
-            }
+            return (
+                f"Error: {str(e)}",  # metrics textbox
+                None,                # recon image
+                None,                # weights image
+                "VRAM: N/A"         # vram textbox
+            )
     
     def prune_model(
         self, 
         method: str,
         sparsity: float,
         progress: gr.Progress = gr.Progress()
-    ) -> Dict[str, Any]:
+    ) -> tuple:
         """Prune model and update experimental state"""
         try:
             progress(0, desc="Pruning model...")
@@ -92,10 +91,29 @@ class PruningUI:
                 self.experimental_state.vram_usage = torch.cuda.memory_allocated() / 1024**2
             
             progress(1.0, desc="Pruning complete!")
-            return self._get_comparison_metrics("experimental")
+            
+            # Calculate relative changes
+            base_metrics = self.equipped_state.metrics or self.original_state.metrics
+            param_change = (metrics['total_params'] - base_metrics['total_params']) / base_metrics['total_params']
+            sparsity_change = metrics['sparsity_ratio'] - base_metrics['sparsity_ratio']
+            
+            return (
+                self._format_metrics(metrics),                     # metrics textbox
+                f"Parameter Change: {param_change:+.2%}\n"        # relative metrics
+                f"Sparsity Change: {sparsity_change:+.2%}",
+                self.experimental_state.reconstructions,           # recon image
+                self.experimental_state.weight_dist,              # weights image
+                f"VRAM: {self.experimental_state.vram_usage:.1f}MB"  # vram textbox
+            )
             
         except Exception as e:
-            return {"error": str(e)}
+            return (
+                f"Error: {str(e)}",  # metrics textbox
+                "",                  # relative metrics
+                None,               # recon image
+                None,               # weights image
+                "VRAM: N/A"        # vram textbox
+            )
     
     def train_model(
         self,
@@ -111,7 +129,7 @@ class PruningUI:
         weight_decay: float,
         grad_clip: float,
         progress: gr.Progress = gr.Progress()
-    ) -> Dict[str, Any]:
+    ) -> tuple:
         """Train the experimental model"""
         try:
             progress(0, desc="Training model...")
@@ -124,12 +142,31 @@ class PruningUI:
                 self.experimental_state.vram_usage = torch.cuda.memory_allocated() / 1024**2
             
             progress(1.0, desc="Training complete!")
-            return self._get_comparison_metrics("experimental")
+            
+            # Calculate relative changes
+            base_metrics = self.equipped_state.metrics or self.original_state.metrics
+            param_change = (metrics['total_params'] - base_metrics['total_params']) / base_metrics['total_params']
+            sparsity_change = metrics['sparsity_ratio'] - base_metrics['sparsity_ratio']
+            
+            return (
+                self._format_metrics(metrics),                     # metrics textbox
+                f"Parameter Change: {param_change:+.2%}\n"        # relative metrics
+                f"Sparsity Change: {sparsity_change:+.2%}",
+                self.experimental_state.reconstructions,           # recon image
+                self.experimental_state.weight_dist,              # weights image
+                f"VRAM: {self.experimental_state.vram_usage:.1f}MB"  # vram textbox
+            )
             
         except Exception as e:
-            return {"error": str(e)}
+            return (
+                f"Error: {str(e)}",  # metrics textbox
+                "",                  # relative metrics
+                None,               # recon image
+                None,               # weights image
+                "VRAM: N/A"        # vram textbox
+            )
     
-    def equip_model(self) -> Dict[str, Any]:
+    def equip_model(self) -> tuple:
         """Promote experimental model to equipped status"""
         try:
             metrics = self.model_manager.equip_experimental_model()
@@ -140,10 +177,27 @@ class PruningUI:
             if torch.cuda.is_available():
                 self.equipped_state.vram_usage = torch.cuda.memory_allocated() / 1024**2
             
-            return self._get_comparison_metrics("equipped")
+            # Calculate relative changes from original
+            param_change = (metrics['total_params'] - self.original_state.metrics['total_params']) / self.original_state.metrics['total_params']
+            sparsity_change = metrics['sparsity_ratio'] - self.original_state.metrics['sparsity_ratio']
+            
+            return (
+                self._format_metrics(metrics),                     # metrics textbox
+                f"Parameter Change: {param_change:+.2%}\n"        # relative metrics
+                f"Sparsity Change: {sparsity_change:+.2%}",
+                self.equipped_state.reconstructions,              # recon image
+                self.equipped_state.weight_dist,                 # weights image
+                f"VRAM: {self.equipped_state.vram_usage:.1f}MB"   # vram textbox
+            )
             
         except Exception as e:
-            return {"error": str(e)}
+            return (
+                f"Error: {str(e)}",  # metrics textbox
+                "",                  # relative metrics
+                None,               # recon image
+                None,               # weights image
+                "VRAM: N/A"        # vram textbox
+            )
     
     def _format_metrics(self, metrics: Dict[str, Any]) -> str:
         """Format metrics for display"""
@@ -154,7 +208,7 @@ class PruningUI:
             f"VRAM Usage: {metrics.get('vram_usage', 0):.1f}MB"
         )
     
-    def _get_comparison_metrics(self, model_type: str) -> Dict[str, Any]:
+    def _get_comparison_metrics(self, model_type: str) -> tuple:
         """Get comparative metrics between models"""
         if model_type == "experimental":
             state = self.experimental_state
@@ -164,22 +218,26 @@ class PruningUI:
             base_metrics = self.original_state.metrics
             
         if not state.metrics or not base_metrics:
-            return {}
+            return (
+                "",  # metrics textbox
+                "",  # relative metrics
+                None,  # recon image
+                None,  # weights image
+                ""  # vram textbox
+            )
             
         # Calculate relative changes
         param_change = (state.metrics['total_params'] - base_metrics['total_params']) / base_metrics['total_params']
         sparsity_change = state.metrics['sparsity_ratio'] - base_metrics['sparsity_ratio']
         
-        return {
-            "metrics": self._format_metrics(state.metrics),
-            "reconstructions": state.reconstructions,
-            "weight_dist": state.weight_dist,
-            "vram": f"VRAM: {state.vram_usage:.1f}MB",
-            "relative_metrics": (
-                f"Parameter Change: {param_change:+.2%}\n"
-                f"Sparsity Change: {sparsity_change:+.2%}"
-            )
-        }
+        return (
+            self._format_metrics(state.metrics),                     # metrics textbox
+            f"Parameter Change: {param_change:+.2%}\n"        # relative metrics
+            f"Sparsity Change: {sparsity_change:+.2%}",
+            state.reconstructions,           # recon image
+            state.weight_dist,              # weights image
+            f"VRAM: {state.vram_usage:.1f}MB"  # vram textbox
+        )
 
 def create_ui() -> gr.Blocks:
     """Create the Gradio interface following gameplan specifications"""

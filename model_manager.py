@@ -245,14 +245,18 @@ class ModelManager:
             for idx in range(n_samples):
                 # Original image
                 plt.subplot(n_samples, 2, 2*idx + 1)
-                original_img = x[idx].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
+                original_img = x[idx].cpu().numpy().transpose(1, 2, 0)
+                # Ensure values are in [0, 1] range
+                original_img = np.clip((original_img + 1) / 2, 0, 1)
                 plt.imshow(original_img)
                 plt.title(f"Original Image {idx+1}")
                 plt.axis('off')
                 
                 # Reconstructed image
                 plt.subplot(n_samples, 2, 2*idx + 2)
-                reconstructed_img = y[idx].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
+                reconstructed_img = y[idx].cpu().numpy().transpose(1, 2, 0)
+                # Ensure values are in [0, 1] range
+                reconstructed_img = np.clip((reconstructed_img + 1) / 2, 0, 1)
                 plt.imshow(reconstructed_img)
                 plt.title(f"Reconstructed {idx+1}")
                 plt.axis('off')
