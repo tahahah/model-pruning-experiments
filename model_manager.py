@@ -306,112 +306,98 @@ class ModelManager:
     def _save_reconstructions(self, model: DCAE, step: str):
         """Save reconstruction visualizations"""
         try:
-            # Get sample batch - assuming it's a dictionary with 'data' key
-            images = self.sample_batch['data'].to(self.device)
-            
-            # Ensure model is in eval mode
             model.eval()
-            
-            # Get reconstructions
             with torch.no_grad():
-                try:
-                    self.logger.info("Computing latent representation...")
-                    latent = model.encode(images)
-                    self.logger.info("Decoding reconstruction...")
-                    reconstructions = model.decode(latent)
-                except RuntimeError as e:
-                    if "out of memory" in str(e):
-                        self.logger.error("CUDA out of memory during reconstruction")
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                        raise RuntimeError("GPU out of memory. Try reducing batch size or image size.")
-                    raise
-            
-            # Move tensors to CPU before visualization
-            images = images.cpu()
-            reconstructions = reconstructions.cpu()
-            
-            # Create figure
-            fig, axes = plt.subplots(2, 1, figsize=(8, 8))  # Changed to 2x1 since we only have 1 image
-            fig.suptitle(f"Original vs Reconstructed Images - {step}")
-            
-            # Original
-            orig = images[0].permute(1, 2, 0).numpy()
-            orig = (orig - orig.min()) / (orig.max() - orig.min())  # Normalize to [0,1]
-            axes[0].imshow(orig)
-            axes[0].axis('off')
-            axes[0].set_title('Original')
-            
-            # Reconstruction
-            recon = reconstructions[0].permute(1, 2, 0).numpy()
-            recon = (recon - recon.min()) / (recon.max() - recon.min())  # Normalize to [0,1]
-            axes[1].imshow(recon)
-            axes[1].axis('off')
-            axes[1].set_title('Reconstructed')
-            
-            # Save figure
-            plt.tight_layout()
-            save_path = os.path.join(self.save_dir, f"reconstructions_{step}.png")
-            plt.savefig(save_path)
-            plt.close()
-            
-            # Clear memory
-            del images, reconstructions, latent
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                x = self.sample_batch['data'].to(self.device)
+                # Get reconstructions
+                latent = model.encode(x)
+                y = model.decode(latent)
+                
+                # Calculate reconstruction loss
+                loss = F.mse_loss(y, x).item()
+                
+                # Create a grid of original vs reconstructed images
+                n_samples = min(4, x.size(0))  # Show up to 4 samples
+                plt.figure(figsize=(12, 3*n_samples))
+                
+                for idx in range(n_samples):
+                    # Original image
+                    plt.subplot(n_samples, 2, 2*idx + 1)
+                    original_img = x[idx].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
+                    plt.imshow(original_img)
+                    plt.title(f"Original Image {idx+1}")
+                    plt.axis('off')
+                    
+                    # Reconstructed image
+                    plt.subplot(n_samples, 2, 2*idx + 2)
+                    reconstructed_img = y[idx].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
+                    plt.imshow(reconstructed_img)
+                    plt.title(f"Reconstructed {idx+1}")
+                    plt.axis('off')
+                
+                plt.suptitle(f"{step.capitalize()} Model - MSE Loss: {loss:.4f}")
+                plt.tight_layout()
+                
+                # Save the comparison plot
+                save_path = os.path.join(self.save_dir, f"reconstructions_{step}.png")
+                plt.savefig(save_path)
+                plt.close()
+                
+                # Clear memory
+                del x, y, latent
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    
+                self.logger.info(f"Saved reconstruction comparison to {save_path}")
                 
         except Exception as e:
             self.logger.error(f"Error saving reconstructions: {str(e)}\n{traceback.format_exc()}")
             raise
-    
+
     def _save_weight_distribution(self, model: DCAE, step: str):
-        """Save weight distribution plots in a memory-efficient way"""
+        """Save weight distribution plots"""
         try:
-            plt.figure(figsize=(15, 5))
+            total_params = 0
+            total_nonzero = 0
+            stats = []
             
-            # Define bins once for consistency
-            bins = np.linspace(-0.5, 0.5, 50)
+            for name, param in model.named_parameters():
+                if param.dim() > 1:  # Skip 1D tensors like biases
+                    nonzero = torch.count_nonzero(param).item()
+                    total = param.numel()
+                    total_params += total
+                    total_nonzero += nonzero
+                    stats.append({
+                        'Layer': name,
+                        'Size': total,
+                        'NonZero': nonzero,
+                        'Sparsity(%)': (1 - nonzero/total)*100
+                    })
             
-            # Process encoder and decoder weights separately
-            for subplot_idx, layer_type in enumerate(['encoder', 'decoder'], 1):
-                plt.subplot(1, 2, subplot_idx)
-                
-                # Initialize histogram arrays
-                hist_counts = np.zeros_like(bins[:-1], dtype=np.float64)
-                total_weights = 0
-                
-                # Process weights layer by layer
-                for name, module in model.named_modules():
-                    if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)) and layer_type in name:
-                        # Process each weight tensor
-                        weights = module.weight.data.cpu().numpy()
-                        total_weights += weights.size
-                        
-                        # Update histogram counts
-                        hist, _ = np.histogram(weights.ravel(), bins=bins, density=False)
-                        hist_counts += hist
-                        
-                        # Clear memory
-                        del weights
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                
-                # Normalize histogram
-                if total_weights > 0:
-                    hist_counts = hist_counts / total_weights
-                
-                # Plot histogram
-                plt.stairs(hist_counts, bins, alpha=0.7)
-                plt.title(f'{layer_type.capitalize()} Weights - {step}')
-                plt.xlabel('Weight Value')
-                plt.ylabel('Density')
+            # Create weight distribution plot
+            plt.figure(figsize=(10, 6))
+            weights = []
+            for name, param in model.named_parameters():
+                if param.dim() > 1:  # Skip 1D tensors like biases
+                    weights.extend(param.data.cpu().numpy().flatten())
             
-            plt.tight_layout()
+            plt.hist(weights, bins=100, density=True, alpha=0.7)
+            plt.title(f'Weight Distribution - {step} (Sparsity: {1 - total_nonzero/total_params:.1%})')
+            plt.xlabel('Weight Value')
+            plt.ylabel('Density')
+            plt.grid(True, alpha=0.3)
             
-            # Save plot
+            # Save figure
             save_path = os.path.join(self.save_dir, f"weight_dist_{step}.png")
             plt.savefig(save_path)
             plt.close()
+            
+            # Clear memory
+            del weights
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
+            self.logger.info(f"Saved weight distribution to {save_path}")
             
         except Exception as e:
             self.logger.error(f"Error saving weight distribution: {str(e)}\n{traceback.format_exc()}")
