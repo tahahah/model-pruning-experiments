@@ -256,7 +256,8 @@ class ModelManager:
         
         # Get reconstructions
         with torch.no_grad():
-            reconstructions = model(images)
+            latent = model.encode(images)
+            reconstructions = model.decode(latent)
         
         # Create figure
         fig, axes = plt.subplots(2, 4, figsize=(16, 8))
