@@ -167,6 +167,37 @@ class ModelManager:
         except Exception as e:
             self.logger.error(f"Error creating experimental model: {str(e)}\n{traceback.format_exc()}")
             raise
+    
+    def create_run_config(config: dict) -> DCAERunConfig:
+        """Create RunConfig from configuration dictionary."""
+        # Get model config for loss weights
+        model_cfg = config.get('model', {})
+        run_cfg = config.get('run_config', {})
+        
+        run_config = DCAERunConfig(
+            # Required RunConfig parameters
+            n_epochs=run_cfg['n_epochs'],
+            init_lr=run_cfg['init_lr'],
+            warmup_epochs=run_cfg['warmup_epochs'],
+            warmup_lr=run_cfg['warmup_lr'],
+            lr_schedule_name=run_cfg['lr_schedule_name'],
+            lr_schedule_param=run_cfg['lr_schedule_param'],
+            optimizer_name=run_cfg['optimizer_name'],
+            optimizer_params=run_cfg['optimizer_params'],
+            weight_decay=run_cfg['weight_decay'],
+            no_wd_keys=run_cfg['no_wd_keys'],
+            grad_clip=run_cfg['grad_clip'],
+            reset_bn=run_cfg['reset_bn'],
+            reset_bn_size=run_cfg['reset_bn_size'],
+            reset_bn_batch_size=run_cfg['reset_bn_batch_size'],
+            eval_image_size=run_cfg['eval_image_size'],
+            
+            # DCAE specific parameters
+            reconstruction_weight=model_cfg.get('reconstruction_weight', 1.0),
+            perceptual_weight=model_cfg.get('perceptual_weight', 0.1)
+        )
+        
+        return run_config
 
     def prune_experimental_model(self, sparsity: float) -> Dict[str, Any]:
         """
@@ -230,7 +261,7 @@ class ModelManager:
             
             # Setup trainer with safe defaults
             trainer.prep_for_training(
-                run_config=self.config.get('run_config', {}),
+                run_config=create_run_config(self.config),
                 ema_decay=None,  # EMA is handled by EfficientViT's trainer
                 amp=None  # AMP is handled by EfficientViT's trainer
             )
