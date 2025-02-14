@@ -28,55 +28,28 @@ class ModelManager:
     and the dcaecore functionality.
     """
     
-    def __init__(self, config_path: str, save_dir: str):
-        try:
-            with open(config_path) as f:
-                self.config = yaml.safe_load(f)
-            self.save_dir = save_dir
-            os.makedirs(save_dir, exist_ok=True)
-            
-            # Initialize logger
-            self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.INFO)
-            
-            # Setup device and seed
-            self.device = setup_dist_env("0") # TODO: Make configurable to multiple gpus
-            set_random_seed(42)  # TODO: Make configurable
-            
-            # Model states
-            self.original_model: Optional[DCAE] = None
-            self.equipped_model: Optional[DCAE] = None
-            self.experimental_model: Optional[DCAE] = None
-            
-            # Initialize dataset
-            self._setup_dataset()
-            
-            # Get a random sample batch for visualization
-            random_index = torch.randint(0, 100, (1,)).item()
-            try:
-                self.sample_batch = next(itertools.islice(self.dataset_provider.valid, random_index, None))
-                if not isinstance(self.sample_batch, dict) or 'data' not in self.sample_batch:
-                    self.logger.error("Invalid sample batch format. Expected dict with 'data' key.")
-                    # Create a default sample batch with random data
-                    self.sample_batch = {
-                        'data': torch.randn(1, 3, 512, 512)  # B=1, C=3, H=512, W=512
-                    }
-            except Exception as e:
-                self.logger.error(f"Error getting sample batch: {str(e)}\n{traceback.format_exc()}")
-                # Create a default sample batch with random data
-                self.sample_batch = {
-                    'data': torch.randn(1, 3, 512, 512)  # B=1, C=3, H=512, W=512
-                }
-            
-            # Initialize LPIPS for loss calculation
-            self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).to(self.device)
-        except Exception as e:
-            self.logger.error(f"Error initializing ModelManager: {str(e)}\n{traceback.format_exc()}")
-            raise
+    def __init__(self, save_dir: str):
+        """Initialize ModelManager"""
+        self.logger = logging.getLogger(__name__)
+        self.save_dir = save_dir
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-    def _setup_dataset(self):
-        """Initialize the dataset provider with configuration"""
-        try:
+        # Models
+        self.original_model = None
+        self.equipped_model = None
+        self.experimental_model = None
+        self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).to(self.device)
+        
+        # Dataset
+        self.dataset_provider = None
+        self.sample_batch = None
+        
+        os.makedirs(save_dir, exist_ok=True)
+
+    def _setup_dataset_if_needed(self):
+        """Setup dataset provider if not already set up"""
+        if self.dataset_provider is None:
+            self.logger.info("Setting up dataset provider...")
             data_provider_cfg = self.config.get('data_provider', {})
             data_cfg = PacmanDatasetProviderConfig(
                 name=data_provider_cfg.get('name', 'SimplePacmanDatasetProvider'),
@@ -97,10 +70,9 @@ class ModelManager:
             data_cfg.rank = get_dist_rank()
             
             self.dataset_provider = SimplePacmanDatasetProvider(data_cfg)
-        except Exception as e:
-            self.logger.error(f"Error setting up dataset: {str(e)}\n{traceback.format_exc()}")
-            raise
-        
+            self.sample_batch = next(iter(self.dataset_provider.valid))
+            self.logger.info("Dataset provider setup complete")
+
     def load_initial_model(self, model_path_or_name: str) -> Dict[str, Any]:
         """
         Load initial model and set it as both original and equipped model.
@@ -384,46 +356,90 @@ class ModelManager:
             raise
     
     def _save_weight_distribution(self, model: DCAE, step: str):
-        """Save weight distribution plots"""
+        """Save weight distribution plots in a memory-efficient way"""
         try:
-            weights = []
-            for name, param in model.named_parameters():
-                if 'weight' in name:
-                    weights.extend(param.data.cpu().numpy().flatten())
+            plt.figure(figsize=(15, 5))
             
-            plt.figure(figsize=(10, 6))
-            plt.hist(weights, bins=100, density=True)
-            plt.title(f'Weight Distribution - {step}')
-            plt.xlabel('Weight Value')
-            plt.ylabel('Density')
+            # Define bins once for consistency
+            bins = np.linspace(-0.5, 0.5, 50)
             
-            # Save figure
+            # Process encoder and decoder weights separately
+            for subplot_idx, layer_type in enumerate(['encoder', 'decoder'], 1):
+                plt.subplot(1, 2, subplot_idx)
+                
+                # Initialize histogram arrays
+                hist_counts = np.zeros_like(bins[:-1], dtype=np.float64)
+                total_weights = 0
+                
+                # Process weights layer by layer
+                for name, module in model.named_modules():
+                    if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)) and layer_type in name:
+                        # Process each weight tensor
+                        weights = module.weight.data.cpu().numpy()
+                        total_weights += weights.size
+                        
+                        # Update histogram counts
+                        hist, _ = np.histogram(weights.ravel(), bins=bins, density=False)
+                        hist_counts += hist
+                        
+                        # Clear memory
+                        del weights
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                
+                # Normalize histogram
+                if total_weights > 0:
+                    hist_counts = hist_counts / total_weights
+                
+                # Plot histogram
+                plt.stairs(hist_counts, bins, alpha=0.7)
+                plt.title(f'{layer_type.capitalize()} Weights - {step}')
+                plt.xlabel('Weight Value')
+                plt.ylabel('Density')
+            
+            plt.tight_layout()
+            
+            # Save plot
             save_path = os.path.join(self.save_dir, f"weight_dist_{step}.png")
             plt.savefig(save_path)
             plt.close()
+            
         except Exception as e:
             self.logger.error(f"Error saving weight distribution: {str(e)}\n{traceback.format_exc()}")
             raise
     
     def _get_model_metrics(self, model: DCAE) -> Dict[str, Any]:
-        """Get comprehensive metrics for a model"""
+        """Get model metrics including sparsity and reconstruction loss"""
         try:
+            # Setup dataset if needed (only when computing metrics)
+            self._setup_dataset_if_needed()
+            
             metrics = {}
             
-            # Get parameter counts and distribution
-            total_params, nonzero_params = analyze_weight_distribution(model)
+            # Calculate sparsity
+            total_params = 0
+            zero_params = 0
+            for name, param in model.named_parameters():
+                if 'weight' in name:
+                    total_params += param.numel()
+                    zero_params += (param.data.abs() < 1e-6).sum().item()
+            metrics['sparsity'] = zero_params / total_params if total_params > 0 else 0
             
-            metrics.update({
-                "total_params": total_params,
-                "nonzero_params": nonzero_params,
-                "sparsity_ratio": 1.0 - (nonzero_params / total_params)
-            })
-            
-            # Get VRAM usage
-            if torch.cuda.is_available():
-                metrics["vram_usage"] = torch.cuda.memory_allocated() / 1024**2  # MB
+            # Calculate reconstruction loss
+            model.eval()
+            with torch.no_grad():
+                images = self.sample_batch['data'].to(self.device)
+                latent = model.encode(images)
+                reconstructions = model.decode(latent)
+                loss = F.mse_loss(reconstructions, images)
+                metrics['reconstruction_loss'] = loss.item()
+                
+                # Clear memory
+                del images, latent, reconstructions
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             return metrics
         except Exception as e:
-            self.logger.error(f"Error getting model metrics: {str(e)}\n{traceback.format_exc()}")
+            self.logger.error(f"Error computing model metrics: {str(e)}\n{traceback.format_exc()}")
             raise
