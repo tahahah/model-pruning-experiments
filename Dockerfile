@@ -14,12 +14,13 @@ RUN curl https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
     && rm ~/miniconda.sh
 
 # Install required Python packages
+COPY requirements.txt .
 RUN pip install uv
-RUN uv pip install --system torch_pruning pandas
-RUN uv pip install --system git+https://github.com/mit-han-lab/efficientvit.git
+RUN uv pip install --system -r requirements.txt
+COPY . .
 
 # Create output directory
 RUN mkdir -p output
 
 # We'll mount the code as a volume instead of copying it
-CMD ["python", "vae_pruning_analysis.py"]
+CMD ["python", "app.py"]
