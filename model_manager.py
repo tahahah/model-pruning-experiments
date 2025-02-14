@@ -17,7 +17,7 @@ from PIL import Image
 from dcaecore.train_dc_ae import setup_dist_env, set_random_seed, get_dist_size, get_dist_rank
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
-from dcaecore.trainer import DCAETrainer
+from dcaecore.trainer import DCAETrainer, DCAERunConfig
 from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 from vae_pruning_analysis import fine_grained_prune, analyze_weight_distribution, plot_weight_distributions
 
