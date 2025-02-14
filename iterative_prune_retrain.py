@@ -40,10 +40,10 @@ def get_user_input(prompt: str) -> bool:
             return False
         print("Please answer 'yes' or 'no'")
 
-def save_model(model: torch.nn.Module, save_dir: str, iteration: int):
+def save_model(model: torch.nn.Module, save_dir: str, iteration: int, final: bool = False):
     """Save model with iteration number"""
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"model_pruned_iter_{iteration}.pth")
+    save_path = os.path.join(save_dir, f"model_pruned_iter_{iteration}{"_final" if final else ""}.pth")
     torch.save(model.state_dict(), save_path)
     print(f"Model saved to {save_path}")
 
@@ -180,7 +180,7 @@ def main():
 
         # Prune model by 50%
         logger.info("Pruning model by 50%...")
-        pruned_model = fine_grained_prune(model, sparsity=0.5)
+        pruned_model = fine_grained_prune(model, sparsity=(1-(0.5**iteration)))
         
         # Save pruned model
         save_model(pruned_model, args.save_dir, iteration)
@@ -227,6 +227,7 @@ def main():
 
         # Ask if user wants to continue
         if not get_user_input("Do you want to continue with another round of pruning?"):
+            save_model(pruned_model, args.save_dir, -1)
             break
 
     logger.info("Finished iterative pruning and retraining")
