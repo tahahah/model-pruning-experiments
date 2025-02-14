@@ -124,8 +124,8 @@ class ModelManager:
             metrics = self._get_model_metrics(self.original_model)
             
             # Save initial visualizations
-            self._save_reconstructions(self.original_model, "initial")
-            self._save_weight_distribution(self.original_model, "initial")
+            # self._save_reconstructions(self.original_model, "initial")
+            # self._save_weight_distribution(self.original_model, "initial")
             
             # Copy initial visualizations to equipped filenames
             import shutil
@@ -222,8 +222,8 @@ class ModelManager:
             metrics = self._get_model_metrics(self.experimental_model)
             
             # Save visualizations
-            self._save_reconstructions(self.experimental_model, "after_pruning")
-            self._save_weight_distribution(self.experimental_model, "after_pruning")
+            # self._save_reconstructions(self.experimental_model, "after_pruning")
+            # self._save_weight_distribution(self.experimental_model, "after_pruning")
             
             return metrics
         except Exception as e:
@@ -261,7 +261,7 @@ class ModelManager:
             
             # Setup trainer with safe defaults
             trainer.prep_for_training(
-                run_config=create_run_config(self.config),
+                run_config=self.create_run_config(self.config),
                 ema_decay=None,  # EMA is handled by EfficientViT's trainer
                 amp=None  # AMP is handled by EfficientViT's trainer
             )
