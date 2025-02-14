@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Dict, Optional, Tuple, Any
 import itertools
+import yaml
 
 import torch
 import torch.nn.functional as F
@@ -15,7 +16,6 @@ from PIL import Image
 from dcaecore.train_dc_ae import setup_dist_env, set_random_seed, get_dist_size, get_dist_rank
 from efficientvit.ae_model_zoo import DCAE_HF
 from dcaecore.trainer import DCAETrainer
-from dcaecore.utils.config import Config
 from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 from vae_pruning_analysis import fine_grained_prune, analyze_weight_distribution, plot_weight_distributions
 
@@ -34,7 +34,7 @@ class ModelManager:
             config_path: Path to the YAML configuration file
             save_dir: Directory to save models and visualizations
         """
-        self.config = Config.from_yaml(config_path)
+        self.config = yaml.safe_load(config_path)
         self.save_dir = save_dir
         os.makedirs(save_dir, exist_ok=True)
         
