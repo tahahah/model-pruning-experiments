@@ -14,8 +14,9 @@ RUN curl https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
     && rm ~/miniconda.sh
 
 # Install required Python packages
-RUN pip install torch_pruning pandas
-RUN pip install git+https://github.com/mit-han-lab/efficientvit.git
+RUN pip install uv
+RUN uv pip install --system torch_pruning pandas
+RUN uv pip install --system git+https://github.com/mit-han-lab/efficientvit.git
 
 # Create output directory
 RUN mkdir -p output
