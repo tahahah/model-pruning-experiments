@@ -116,7 +116,6 @@ def calculate_loss(og, recon):
         "loss": total_loss,
         "recon_loss": recon_loss,
         "perceptual_loss": perceptual_loss,
-        "reconstructed": reconstructed
     }
 
 def main():
