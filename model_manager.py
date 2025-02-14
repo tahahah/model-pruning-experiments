@@ -120,8 +120,21 @@ class ModelManager:
             # Get initial metrics and save visualizations
             self.logger.info("Computing metrics and saving visualizations...")
             metrics = self._get_model_metrics(self.original_model)
+            
+            # Save initial visualizations
             self._save_reconstructions(self.original_model, "initial")
             self._save_weight_distribution(self.original_model, "initial")
+            
+            # Copy initial visualizations to equipped filenames
+            import shutil
+            recon_src = os.path.join(self.save_dir, "reconstructions_initial.png")
+            recon_dst = os.path.join(self.save_dir, "reconstructions_equipped.png")
+            weight_src = os.path.join(self.save_dir, "weight_dist_initial.png")
+            weight_dst = os.path.join(self.save_dir, "weight_dist_equipped.png")
+            
+            shutil.copy2(recon_src, recon_dst)
+            shutil.copy2(weight_src, weight_dst)
+            self.logger.info("Copied initial visualizations to equipped filenames")
             
             if torch.cuda.is_available():
                 self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
@@ -130,7 +143,7 @@ class ModelManager:
         except Exception as e:
             self.logger.error(f"Error loading initial model: {str(e)}\n{traceback.format_exc()}")
             raise
-    
+
     def create_experimental_model(self) -> None:
         """Create a new experimental model from the currently equipped model."""
         try:
@@ -413,14 +426,17 @@ class ModelManager:
             
             metrics = {}
             
-            # Calculate sparsity
+            # Calculate parameter counts and sparsity
             total_params = 0
             zero_params = 0
             for name, param in model.named_parameters():
                 if 'weight' in name:
                     total_params += param.numel()
                     zero_params += (param.data.abs() < 1e-6).sum().item()
-            metrics['sparsity'] = zero_params / total_params if total_params > 0 else 0
+            
+            metrics['total_params'] = total_params
+            metrics['nonzero_params'] = total_params - zero_params
+            metrics['sparsity_ratio'] = zero_params / total_params if total_params > 0 else 0
             
             # Calculate reconstruction loss
             model.eval()
