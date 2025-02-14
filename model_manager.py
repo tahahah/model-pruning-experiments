@@ -77,7 +77,9 @@ class ModelManager:
             data_cfg.rank = get_dist_rank()
             
             self.dataset_provider = SimplePacmanDatasetProvider(data_cfg)
-            self.sample_batch = next(iter(self.dataset_provider.valid))
+                    
+            random_index = torch.randint(0, 100, (1,)).item()
+            self.sample_batch = next(itertools.islice(self.dataset_provider.valid, random_index, None))
             self.logger.info("Dataset provider setup complete")
 
     def load_initial_model(self, model_path_or_name: str) -> Dict[str, Any]:
