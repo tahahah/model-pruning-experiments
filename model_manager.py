@@ -226,7 +226,7 @@ class ModelManager:
             # Configure trainer logging
             trainer.write_train_log = True  # Enable training step logging
             trainer.write_val_log = True    # Enable validation step logging
-            trainer.log_interval = logging_cfg.get('log_interval', 100)  # Set logging frequency
+            trainer.log_interval = 50  # Set logging frequency
             
             # Setup trainer with safe defaults
             trainer.prep_for_training(
