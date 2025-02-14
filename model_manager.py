@@ -34,7 +34,8 @@ class ModelManager:
             config_path: Path to the YAML configuration file
             save_dir: Directory to save models and visualizations
         """
-        self.config = yaml.safe_load(config_path)
+        with open(config_path) as f:
+            self.config = yaml.safe_load(f)
         self.save_dir = save_dir
         os.makedirs(save_dir, exist_ok=True)
         
