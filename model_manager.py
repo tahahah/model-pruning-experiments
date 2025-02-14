@@ -1,19 +1,21 @@
-import copy
-import logging
 import os
-from typing import Dict, Optional, Tuple, Any
-import itertools
-import yaml
+import logging
 import traceback
-
+import copy
+from typing import Dict, Any, Optional
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from torchvision import transforms
-from torchmetrics.image import LearnedPerceptualImagePatchSimilarity
 import matplotlib.pyplot as plt
+import numpy as np
+from dcaecore.models import DCAE_HF
+from dcaecore.data import PacmanDataProvider
+import yaml
+import itertools
+import torchvision
+import torchvision.transforms as transforms
+from torchmetrics.image import LearnedPerceptualImagePatchSimilarity
 from PIL import Image
-
 from dcaecore.train_dc_ae import setup_dist_env, set_random_seed, get_dist_size, get_dist_rank
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
@@ -40,7 +42,6 @@ class ModelManager:
         # Setup device and seed
         self.device = setup_dist_env("0") # TODO: Make configurable to multiple gpus
         set_random_seed(42)  # TODO: Make configurable
-        
         
         # Models
         self.original_model = None

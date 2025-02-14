@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any
 import asyncio
 from model_manager import ModelManager
+import logging
+import sys
 
 @dataclass
 class ModelState:
@@ -533,6 +535,23 @@ def create_ui() -> gr.Blocks:
     return interface
 
 if __name__ == "__main__":
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    # Create output directory
+    output_dir = "outputs"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Initialize model manager
+    model_manager = ModelManager(output_dir)
+    
+    # Create the Gradio interface
     interface = create_ui()
     interface.launch(
         server_name="0.0.0.0",
