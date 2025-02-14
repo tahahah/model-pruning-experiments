@@ -58,7 +58,20 @@ class ModelManager:
         
         # Get a random sample batch for visualization
         random_index = torch.randint(0, 100, (1,)).item()
-        self.sample_batch = next(itertools.islice(self.dataset_provider.valid, random_index, None))
+        try:
+            self.sample_batch = next(itertools.islice(self.dataset_provider.valid, random_index, None))
+            if not isinstance(self.sample_batch, dict) or 'data' not in self.sample_batch:
+                self.logger.error("Invalid sample batch format. Expected dict with 'data' key.")
+                # Create a default sample batch with random data
+                self.sample_batch = {
+                    'data': torch.randn(4, 3, 512, 512)  # B, C, H, W
+                }
+        except Exception as e:
+            self.logger.error(f"Error getting sample batch: {str(e)}")
+            # Create a default sample batch with random data
+            self.sample_batch = {
+                'data': torch.randn(4, 3, 512, 512)  # B, C, H, W
+            }
         
         # Initialize LPIPS for loss calculation
         self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).to(self.device)
@@ -236,10 +249,10 @@ class ModelManager:
             "perceptual_loss": perceptual_loss,
         }
     
-    def _save_reconstructions(self, model: DCAE, step: str) -> None:
+    def _save_reconstructions(self, model: DCAE, step: str):
         """Save reconstruction visualizations"""
-        # Get sample batch
-        images = self.sample_batch.to(self.device)
+        # Get sample batch - assuming it's a dictionary with 'data' key
+        images = self.sample_batch['data'].to(self.device)
         
         # Get reconstructions
         with torch.no_grad():
