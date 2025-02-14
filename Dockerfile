@@ -13,11 +13,12 @@ RUN curl https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
     && sh ~/miniconda.sh -b -p /opt/conda \
     && rm ~/miniconda.sh
 
+# Install package manager
+RUN pip install uv
+
 # Install required Python packages
 COPY requirements.txt .
-RUN pip install uv
 RUN uv pip install --system -r requirements.txt
-COPY . .
 
 # Create output directory
 RUN mkdir -p output
