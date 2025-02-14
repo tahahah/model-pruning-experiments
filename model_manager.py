@@ -223,9 +223,10 @@ class ModelManager:
                 data_provider=self.dataset_provider
             )
             
-            # Update training config
-            trainer.config.run_config.n_epochs = epochs
-            trainer.config.run_config.steps_per_epoch = steps_per_epoch
+            # Configure trainer logging
+            trainer.write_train_log = True  # Enable training step logging
+            trainer.write_val_log = True    # Enable validation step logging
+            trainer.log_interval = logging_cfg.get('log_interval', 100)  # Set logging frequency
             
             # Setup trainer with safe defaults
             trainer.prep_for_training(
