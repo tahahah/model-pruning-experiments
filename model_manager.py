@@ -28,11 +28,19 @@ class ModelManager:
     and the dcaecore functionality.
     """
     
-    def __init__(self, save_dir: str):
-        """Initialize ModelManager"""
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, config_path: str, save_dir: str):
+        
+        with open(config_path) as f:
+            self.config = yaml.safe_load(f)
         self.save_dir = save_dir
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Initialize logger
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        
+        # Setup device and seed
+        self.device = setup_dist_env("0") # TODO: Make configurable to multiple gpus
+        set_random_seed(42)  # TODO: Make configurable
+        
         
         # Models
         self.original_model = None
