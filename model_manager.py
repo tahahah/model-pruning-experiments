@@ -43,7 +43,7 @@ class ModelManager:
         self.logger.setLevel(logging.INFO)
         
         # Setup device and seed
-        self.device = setup_dist_env(0)
+        self.device = setup_dist_env("0") # TODO: Make configurable to multiple gpus
         set_random_seed(42)  # TODO: Make configurable
         
         # Model states
