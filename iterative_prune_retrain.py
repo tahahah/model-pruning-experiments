@@ -43,7 +43,7 @@ def get_user_input(prompt: str) -> bool:
 def save_model(model: torch.nn.Module, save_dir: str, iteration: int, final: bool = False):
     """Save model with iteration number"""
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"model_pruned_iter_{iteration}{"_final" if final else ""}.pth")
+    save_path = os.path.join(save_dir, f"model_pruned_iter_{iteration}{'_final' if final else ''}.pth")
     torch.save(model.state_dict(), save_path)
     print(f"Model saved to {save_path}")
 
