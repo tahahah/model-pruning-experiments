@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from dcaecore.train_dc_ae import setup_dist_env, set_random_seed, get_dist_size, get_dist_rank
-from efficientvit.ae_model_zoo import DCAE_HF
+from diffusers import AutoencoderDC
 from dcaecore.trainer import DCAETrainer
 from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 from vae_pruning_analysis import fine_grained_prune, analyze_weight_distribution, plot_weight_distributions
@@ -43,13 +43,13 @@ class ModelManager:
         self.logger.setLevel(logging.INFO)
         
         # Setup device and seed
-        self.device = setup_dist_env()
+        self.device = setup_dist_env(0)
         set_random_seed(42)  # TODO: Make configurable
         
         # Model states
-        self.original_model: Optional[DCAE_HF] = None
-        self.equipped_model: Optional[DCAE_HF] = None
-        self.experimental_model: Optional[DCAE_HF] = None
+        self.original_model: Optional[AutoencoderDC] = None
+        self.equipped_model: Optional[AutoencoderDC] = None
+        self.experimental_model: Optional[AutoencoderDC] = None
         
         # Initialize dataset
         self._setup_dataset()
@@ -97,7 +97,7 @@ class ModelManager:
         self.logger.info(f"Loading initial model from {model_path_or_name}")
         
         # Initialize model
-        self.original_model = DCAE_HF.from_pretrained(model_path_or_name)
+        self.original_model = AutoencoderDC.from_pretrained(model_path_or_name)
         self.original_model.to(self.device)
         
         # Set as equipped model
@@ -225,7 +225,7 @@ class ModelManager:
             "perceptual_loss": perceptual_loss,
         }
     
-    def _save_reconstructions(self, model: DCAE_HF, step: str) -> None:
+    def _save_reconstructions(self, model: AutoencoderDC, step: str) -> None:
         """Save reconstruction visualizations"""
         model.eval()
         with torch.no_grad():
@@ -263,12 +263,12 @@ class ModelManager:
             plt.savefig(save_path)
             plt.close()
     
-    def _save_weight_distribution(self, model: DCAE_HF, step: str) -> None:
+    def _save_weight_distribution(self, model: AutoencoderDC, step: str) -> None:
         """Save weight distribution plots"""
         save_path = os.path.join(self.save_dir, f"weight_dist_{step}.png")
         plot_weight_distributions(model, save_path, 0.0)  # sparsity param not used for plotting
     
-    def _get_model_metrics(self, model: DCAE_HF) -> Dict[str, Any]:
+    def _get_model_metrics(self, model: AutoencoderDC) -> Dict[str, Any]:
         """Get comprehensive metrics for a model"""
         metrics = {}
         
