@@ -548,9 +548,6 @@ if __name__ == "__main__":
     output_dir = "outputs"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Initialize model manager
-    model_manager = ModelManager(output_dir)
-    
     # Create the Gradio interface
     interface = create_ui()
     interface.launch(
