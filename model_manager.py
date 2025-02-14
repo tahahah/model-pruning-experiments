@@ -99,7 +99,7 @@ class ModelManager:
         self.logger.info(f"Loading initial model from {model_path_or_name}")
         
         # Initialize model
-        self.original_model = DCAE.from_pretrained(model_path_or_name)
+        self.original_model = DCAE_HF.from_pretrained(model_path_or_name)
         self.original_model.to(self.device)
         
         # Set as equipped model
