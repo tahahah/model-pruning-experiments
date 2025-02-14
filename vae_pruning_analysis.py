@@ -44,7 +44,7 @@ def analyze_weight_distribution(model):
     return total_params, total_nonzero
 
 def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
-    """Prune model weights using magnitude-based pruning"""
+    """Prune model weights using magnitude-based pruning and freeze pruned weights"""
     # Create copy of original model
     pruned_model = deepcopy(model)
     
@@ -68,8 +68,15 @@ def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
             mask = torch.tensor(np.abs(tensor_cpu) > threshold, device=tensor.device)
             mask = mask.reshape(tensor.shape)
             
-            # Apply mask
+            # Apply mask and store it as a buffer (persistent)
             module.weight.data = tensor * mask.float()
+            module.register_buffer('weight_mask', mask)
+            
+            # Register forward hook to apply mask during forward pass
+            def forward_hook(module, input, output):
+                if hasattr(module, 'weight_mask'):
+                    module.weight.data = module.weight.data * module.weight_mask.float()
+            module.register_forward_hook(forward_hook)
             
             # Clean up temporary variables
             del tensor_cpu, mask
