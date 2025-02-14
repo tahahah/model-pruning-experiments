@@ -168,7 +168,7 @@ class ModelManager:
             self.logger.error(f"Error creating experimental model: {str(e)}\n{traceback.format_exc()}")
             raise
     
-    def create_run_config(config: dict) -> DCAERunConfig:
+    def create_run_config(self, config: dict) -> DCAERunConfig:
         """Create RunConfig from configuration dictionary."""
         # Get model config for loss weights
         model_cfg = config.get('model', {})
