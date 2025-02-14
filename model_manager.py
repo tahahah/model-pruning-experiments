@@ -353,34 +353,43 @@ class ModelManager:
             raise
 
     def _save_weight_distribution(self, model: DCAE, step: str):
-        """Save weight distribution plots"""
+        """Save weight distribution plots in a memory-efficient way"""
         try:
-            total_params = 0
-            total_nonzero = 0
-            stats = []
-            
-            for name, param in model.named_parameters():
-                if param.dim() > 1:  # Skip 1D tensors like biases
-                    nonzero = torch.count_nonzero(param).item()
-                    total = param.numel()
-                    total_params += total
-                    total_nonzero += nonzero
-                    stats.append({
-                        'Layer': name,
-                        'Size': total,
-                        'NonZero': nonzero,
-                        'Sparsity(%)': (1 - nonzero/total)*100
-                    })
-            
-            # Create weight distribution plot
             plt.figure(figsize=(10, 6))
-            weights = []
+            
+            # Define bins once for consistency
+            bins = np.linspace(-0.5, 0.5, 100)
+            
+            # Initialize histogram arrays
+            hist_counts = np.zeros_like(bins[:-1], dtype=np.float64)
+            total_weights = 0
+            total_nonzero = 0
+            
+            # Process weights layer by layer
             for name, param in model.named_parameters():
                 if param.dim() > 1:  # Skip 1D tensors like biases
-                    weights.extend(param.data.cpu().numpy().flatten())
+                    # Get layer weights and update counts
+                    weights = param.data.cpu().numpy()
+                    total_weights += weights.size
+                    total_nonzero += torch.count_nonzero(param).item()
+                    
+                    # Update histogram counts
+                    hist, _ = np.histogram(weights.ravel(), bins=bins, density=False)
+                    hist_counts += hist
+                    
+                    # Clear memory
+                    del weights
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
             
-            plt.hist(weights, bins=100, density=True, alpha=0.7)
-            plt.title(f'Weight Distribution - {step} (Sparsity: {1 - total_nonzero/total_params:.1%})')
+            # Normalize histogram
+            if total_weights > 0:
+                hist_counts = hist_counts / total_weights
+            
+            # Plot histogram
+            plt.stairs(hist_counts, bins, alpha=0.7)
+            sparsity = 1 - (total_nonzero / total_weights) if total_weights > 0 else 0
+            plt.title(f'Weight Distribution - {step} (Sparsity: {sparsity:.1%})')
             plt.xlabel('Weight Value')
             plt.ylabel('Density')
             plt.grid(True, alpha=0.3)
@@ -390,11 +399,6 @@ class ModelManager:
             plt.savefig(save_path)
             plt.close()
             
-            # Clear memory
-            del weights
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                
             self.logger.info(f"Saved weight distribution to {save_path}")
             
         except Exception as e:
