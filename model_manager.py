@@ -8,8 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
-from dcaecore.models import DCAE_HF
-from dcaecore.data import PacmanDataProvider
 import yaml
 import itertools
 import torchvision
