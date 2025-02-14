@@ -162,8 +162,8 @@ class ModelManager:
         
         # Initialize trainer
         trainer = DCAETrainer(
+            path=self.save_dir,
             model=self.experimental_model,
-            config=self.config,
             data_provider=self.dataset_provider
         )
         
@@ -171,6 +171,15 @@ class ModelManager:
         trainer.config.run_config.n_epochs = epochs
         trainer.config.run_config.steps_per_epoch = steps_per_epoch
         
+        # Setup trainer with safe defaults
+        trainer.prep_for_training(
+            run_config=self.config.get('run_config', {}),
+            ema_decay=None,  # EMA is handled by EfficientViT's trainer
+            amp=None  # AMP is handled by EfficientViT's trainer
+        )
+        self.logger.info("Trainer setup complete")
+        self.logger.info("Starting training...")
+
         # Train the model
         trainer.train()
         
@@ -229,50 +238,56 @@ class ModelManager:
     
     def _save_reconstructions(self, model: DCAE, step: str) -> None:
         """Save reconstruction visualizations"""
-        model.eval()
+        # Get sample batch
+        images = self.sample_batch.to(self.device)
+        
+        # Get reconstructions
         with torch.no_grad():
-            x = self.sample_batch["data"].to(self.device)
-            # Get reconstructions
-            latent = model.encode(x)
-            y = model.decode(latent)
+            reconstructions = model(images)
+        
+        # Create figure
+        fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+        fig.suptitle(f"Original vs Reconstructed Images - {step}")
+        
+        # Plot originals and reconstructions
+        for i in range(4):
+            # Original
+            orig = images[i].cpu().permute(1, 2, 0).numpy()
+            orig = (orig - orig.min()) / (orig.max() - orig.min())  # Normalize to [0,1]
+            axes[0, i].imshow(orig)
+            axes[0, i].axis('off')
+            axes[0, i].set_title('Original')
             
-            loss_dict = self._calculate_loss(x, y)
-            
-            # Create visualization
-            n_samples = min(4, x.size(0))
-            plt.figure(figsize=(12, 3*n_samples))
-            
-            for idx in range(n_samples):
-                # Original image
-                plt.subplot(n_samples, 2, 2*idx + 1)
-                original_img = x[idx].cpu().numpy().transpose(1, 2, 0)
-                # Ensure values are in [0, 1] range
-                original_img = np.clip((original_img + 1) / 2, 0, 1)
-                plt.imshow(original_img)
-                plt.title(f"Original Image {idx+1}")
-                plt.axis('off')
-                
-                # Reconstructed image
-                plt.subplot(n_samples, 2, 2*idx + 2)
-                reconstructed_img = y[idx].cpu().numpy().transpose(1, 2, 0)
-                # Ensure values are in [0, 1] range
-                reconstructed_img = np.clip((reconstructed_img + 1) / 2, 0, 1)
-                plt.imshow(reconstructed_img)
-                plt.title(f"Reconstructed {idx+1}")
-                plt.axis('off')
-            
-            plt.suptitle(f"{step} - Loss: {loss_dict['loss']:.4f}")
-            plt.tight_layout()
-            
-            # Save the plot
-            save_path = os.path.join(self.save_dir, f"reconstructions_{step}.png")
-            plt.savefig(save_path)
-            plt.close()
-    
-    def _save_weight_distribution(self, model: DCAE, step: str) -> None:
+            # Reconstruction
+            recon = reconstructions[i].cpu().permute(1, 2, 0).numpy()
+            recon = (recon - recon.min()) / (recon.max() - recon.min())  # Normalize to [0,1]
+            axes[1, i].imshow(recon)
+            axes[1, i].axis('off')
+            axes[1, i].set_title('Reconstructed')
+        
+        # Save figure
+        plt.tight_layout()
+        save_path = os.path.join(self.save_dir, f"reconstructions_{step}.png")
+        plt.savefig(save_path)
+        plt.close()
+        
+    def _save_weight_distribution(self, model: DCAE, step: str):
         """Save weight distribution plots"""
+        weights = []
+        for name, param in model.named_parameters():
+            if 'weight' in name:
+                weights.extend(param.data.cpu().numpy().flatten())
+        
+        plt.figure(figsize=(10, 6))
+        plt.hist(weights, bins=100, density=True)
+        plt.title(f'Weight Distribution - {step}')
+        plt.xlabel('Weight Value')
+        plt.ylabel('Density')
+        
+        # Save figure
         save_path = os.path.join(self.save_dir, f"weight_dist_{step}.png")
-        plot_weight_distributions(model, save_path, 0.0)  # sparsity param not used for plotting
+        plt.savefig(save_path)
+        plt.close()
     
     def _get_model_metrics(self, model: DCAE) -> Dict[str, Any]:
         """Get comprehensive metrics for a model"""

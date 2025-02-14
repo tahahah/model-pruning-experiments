@@ -51,26 +51,56 @@ class PruningUI:
     def load_model(self, model_path: str, use_cuda: bool) -> tuple:
         """Load initial model and update original state"""
         try:
+            # Load model and get metrics
             metrics = self.model_manager.load_initial_model(model_path)
+            
+            # Update original model state
             self.original_state.metrics = metrics
             self.original_state.reconstructions = os.path.join(self.save_dir, "reconstructions_initial.png")
             self.original_state.weight_dist = os.path.join(self.save_dir, "weight_dist_initial.png")
             
+            # Update VRAM usage
             if torch.cuda.is_available() and use_cuda:
                 self.original_state.vram_usage = torch.cuda.memory_allocated() / 1024**2
             
+            # Also update equipped model state since they start the same
+            self.equipped_state.metrics = metrics.copy()
+            self.equipped_state.reconstructions = os.path.join(self.save_dir, "reconstructions_equipped.png")
+            self.equipped_state.weight_dist = os.path.join(self.save_dir, "weight_dist_equipped.png")
+            self.equipped_state.vram_usage = self.original_state.vram_usage
+            
+            # Ensure files exist before returning
+            if not all(os.path.exists(f) for f in [
+                self.original_state.reconstructions,
+                self.original_state.weight_dist,
+                self.equipped_state.reconstructions,
+                self.equipped_state.weight_dist
+            ]):
+                raise FileNotFoundError("Required visualization files were not generated")
+            
             return (
-                self._format_metrics(self.original_state.metrics),  # metrics textbox
-                self.original_state.reconstructions,                # recon image
-                self.original_state.weight_dist,                   # weights image
-                f"VRAM: {self.original_state.vram_usage:.1f}MB"    # vram textbox
+                self._format_metrics(self.original_state.metrics),
+                self.original_state.reconstructions,
+                self.original_state.weight_dist,
+                f"VRAM: {self.original_state.vram_usage:.1f}MB",
+                self._format_metrics(self.equipped_state.metrics),
+                "",  # No relative metrics for initial load
+                self.equipped_state.reconstructions,
+                self.equipped_state.weight_dist,
+                f"VRAM: {self.equipped_state.vram_usage:.1f}MB"
             )
         except Exception as e:
+            print(f"Error loading model: {str(e)}")  # For debugging
             return (
-                f"Error: {str(e)}",  # metrics textbox
-                None,                # recon image
-                None,                # weights image
-                "VRAM: N/A"         # vram textbox
+                f"Error: {str(e)}",
+                None,
+                None, 
+                "VRAM: N/A",
+                "Error: Model not loaded",
+                "",
+                None,
+                None,
+                "VRAM: N/A"
             )
     
     def prune_model(
@@ -200,14 +230,18 @@ class PruningUI:
             )
     
     def _format_metrics(self, metrics: Dict[str, Any]) -> str:
-        """Format metrics for display"""
-        return (
-            f"Parameters: {metrics['total_params']:,}\n"
-            f"Non-zero Parameters: {metrics['nonzero_params']:,}\n"
-            f"Sparsity Ratio: {metrics['sparsity_ratio']:.2%}\n"
-            f"VRAM Usage: {metrics.get('vram_usage', 0):.1f}MB"
-        )
-    
+        """Format metrics dictionary into a readable string"""
+        if not metrics:
+            return "No metrics available"
+        
+        formatted = []
+        for key, value in metrics.items():
+            if isinstance(value, float):
+                formatted.append(f"{key}: {value:.4f}")
+            else:
+                formatted.append(f"{key}: {value}")
+        return "\n".join(formatted)
+
     def _get_comparison_metrics(self, model_type: str) -> tuple:
         """Get comparative metrics between models"""
         if model_type == "experimental":
@@ -243,19 +277,34 @@ def create_ui() -> gr.Blocks:
     """Create the Gradio interface following gameplan specifications"""
     ui = PruningUI()
     
-    with gr.Blocks(title="Model Pruning Studio", theme=gr.themes.Soft()) as interface:
+    with gr.Blocks(title="Model Pruning Studio") as interface:
         gr.Markdown("""
-        # 🧠 Interactive Model Pruning Studio
+        # Interactive Model Pruning Studio
         Iteratively prune and retrain vision models with real-time feedback
         """)
         
-        # Top Row: Original Model Status
+        # Model Loading Section
+        with gr.Row():
+            with gr.Column():
+                model_path = gr.Textbox(
+                    label="Model Path/ID",
+                    placeholder="mit-han-lab/dc-ae-f32c32-in-1.0",
+                    value="mit-han-lab/dc-ae-f32c32-in-1.0"  # Default value
+                )
+                use_cuda = gr.Checkbox(
+                    label="Use CUDA",
+                    value=torch.cuda.is_available()
+                )
+                load_btn = gr.Button("Load Model", variant="primary")
+        
+        # Original Model Status
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### Original Model Status")
                 original_metrics = gr.Textbox(
                     label="Metrics",
-                    interactive=False
+                    interactive=False,
+                    lines=4
                 )
                 original_vram = gr.Textbox(
                     label="VRAM Usage",
@@ -265,11 +314,13 @@ def create_ui() -> gr.Blocks:
                 with gr.Row():
                     original_recon = gr.Image(
                         label="Original Reconstructions",
-                        interactive=False
+                        interactive=False,
+                        type="filepath"  # Use filepath instead of numpy array
                     )
                     original_weights = gr.Image(
                         label="Original Weight Distribution",
-                        interactive=False
+                        interactive=False,
+                        type="filepath"
                     )
         
         # Middle Section: Two Columns
@@ -277,26 +328,16 @@ def create_ui() -> gr.Blocks:
             # Left Column (Current Model)
             with gr.Column():
                 gr.Markdown("### Current Model")
-                with gr.Group():
-                    # Model Configuration
-                    model_path = gr.Textbox(
-                        label="Model Path/ID",
-                        placeholder="mit-han-lab/dcae-c64"
-                    )
-                    use_cuda = gr.Checkbox(
-                        label="Use CUDA",
-                        value=torch.cuda.is_available()
-                    )
-                    load_btn = gr.Button("Load Model", variant="primary")
-                
                 # Current Model Metrics
                 equipped_metrics = gr.Textbox(
                     label="Current Model Metrics",
-                    interactive=False
+                    interactive=False,
+                    lines=4
                 )
                 equipped_relative = gr.Textbox(
                     label="Relative to Original",
-                    interactive=False
+                    interactive=False,
+                    lines=2
                 )
                 equipped_vram = gr.Textbox(
                     label="VRAM Usage",
@@ -306,11 +347,13 @@ def create_ui() -> gr.Blocks:
                 with gr.Accordion("Visualizations", open=False):
                     equipped_recon = gr.Image(
                         label="Current Reconstructions",
-                        interactive=False
+                        interactive=False,
+                        type="filepath"
                     )
                     equipped_weights = gr.Image(
                         label="Current Weight Distribution",
-                        interactive=False
+                        interactive=False,
+                        type="filepath"
                     )
             
             # Right Column (Experimental Model)
@@ -392,11 +435,13 @@ def create_ui() -> gr.Blocks:
                 # Experimental Model Metrics
                 experimental_metrics = gr.Textbox(
                     label="Experimental Model Metrics",
-                    interactive=False
+                    interactive=False,
+                    lines=4
                 )
                 experimental_relative = gr.Textbox(
                     label="Relative to Current",
-                    interactive=False
+                    interactive=False,
+                    lines=2
                 )
                 experimental_vram = gr.Textbox(
                     label="VRAM Usage",
@@ -406,11 +451,13 @@ def create_ui() -> gr.Blocks:
                 with gr.Accordion("Visualizations", open=False):
                     experimental_recon = gr.Image(
                         label="Experimental Reconstructions",
-                        interactive=False
+                        interactive=False,
+                        type="filepath"
                     )
                     experimental_weights = gr.Image(
                         label="Experimental Weight Distribution",
-                        interactive=False
+                        interactive=False,
+                        type="filepath"
                     )
                 
                 equip_btn = gr.Button("Promote to Production", variant="primary")
@@ -423,7 +470,12 @@ def create_ui() -> gr.Blocks:
                 original_metrics,
                 original_recon,
                 original_weights,
-                original_vram
+                original_vram,
+                equipped_metrics,  # Also update equipped model metrics
+                equipped_relative,
+                equipped_recon,
+                equipped_weights,
+                equipped_vram
             ]
         )
         
