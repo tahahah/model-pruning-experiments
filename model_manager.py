@@ -103,7 +103,7 @@ class ModelManager:
         
     def load_initial_model(self, model_path_or_name: str) -> Dict[str, Any]:
         """
-        Load the initial model and set it as both original and equipped model.
+        Load initial model and set it as both original and equipped model.
         
         Args:
             model_path_or_name: Path to model or HuggingFace model name
@@ -114,17 +114,38 @@ class ModelManager:
         try:
             self.logger.info(f"Loading initial model from {model_path_or_name}")
             
+            # Clear any existing models from memory
+            if self.original_model is not None:
+                del self.original_model
+            if self.equipped_model is not None:
+                del self.equipped_model
+            if self.experimental_model is not None:
+                del self.experimental_model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
             # Initialize model
+            self.logger.info("Initializing model...")
             self.original_model = DCAE_HF.from_pretrained(model_path_or_name)
-            self.original_model.to(self.device)
+            
+            # Move model to device and set to eval mode
+            self.logger.info(f"Moving model to device: {self.device}")
+            self.original_model = self.original_model.to(self.device)
+            self.original_model.eval()
             
             # Set as equipped model
+            self.logger.info("Creating equipped model copy...")
             self.equipped_model = copy.deepcopy(self.original_model)
+            self.equipped_model.eval()
             
             # Get initial metrics and save visualizations
+            self.logger.info("Computing metrics and saving visualizations...")
             metrics = self._get_model_metrics(self.original_model)
             self._save_reconstructions(self.original_model, "initial")
             self._save_weight_distribution(self.original_model, "initial")
+            
+            if torch.cuda.is_available():
+                self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
             
             return metrics
         except Exception as e:
@@ -135,11 +156,24 @@ class ModelManager:
         """Create a new experimental model from the currently equipped model."""
         try:
             self.logger.info("Creating new experimental model from equipped model")
+            
+            # Clear any existing experimental model
+            if self.experimental_model is not None:
+                del self.experimental_model
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
+            # Create new experimental model
             self.experimental_model = copy.deepcopy(self.equipped_model)
+            self.experimental_model.eval()
+            
+            if torch.cuda.is_available():
+                self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
+                
         except Exception as e:
             self.logger.error(f"Error creating experimental model: {str(e)}\n{traceback.format_exc()}")
             raise
-        
+
     def prune_experimental_model(self, sparsity: float) -> Dict[str, Any]:
         """
         Prune the experimental model to the specified sparsity.
@@ -233,16 +267,29 @@ class ModelManager:
                 
             self.logger.info("Equipping experimental model")
             
+            # Clear current equipped model
+            if self.equipped_model is not None:
+                del self.equipped_model
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
             # Update equipped model
             self.equipped_model = copy.deepcopy(self.experimental_model)
+            self.equipped_model.eval()
             
             # Clear experimental model
+            del self.experimental_model
             self.experimental_model = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             
             # Save visualizations of newly equipped model
             metrics = self._get_model_metrics(self.equipped_model)
             self._save_reconstructions(self.equipped_model, "equipped")
             self._save_weight_distribution(self.equipped_model, "equipped")
+            
+            if torch.cuda.is_available():
+                self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
             
             return metrics
         except Exception as e:
@@ -281,24 +328,41 @@ class ModelManager:
             # Get sample batch - assuming it's a dictionary with 'data' key
             images = self.sample_batch['data'].to(self.device)
             
+            # Ensure model is in eval mode
+            model.eval()
+            
             # Get reconstructions
             with torch.no_grad():
-                latent = model.encode(images)
-                reconstructions = model.decode(latent)
+                try:
+                    self.logger.info("Computing latent representation...")
+                    latent = model.encode(images)
+                    self.logger.info("Decoding reconstruction...")
+                    reconstructions = model.decode(latent)
+                except RuntimeError as e:
+                    if "out of memory" in str(e):
+                        self.logger.error("CUDA out of memory during reconstruction")
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        raise RuntimeError("GPU out of memory. Try reducing batch size or image size.")
+                    raise
+            
+            # Move tensors to CPU before visualization
+            images = images.cpu()
+            reconstructions = reconstructions.cpu()
             
             # Create figure
             fig, axes = plt.subplots(2, 1, figsize=(8, 8))  # Changed to 2x1 since we only have 1 image
             fig.suptitle(f"Original vs Reconstructed Images - {step}")
             
             # Original
-            orig = images[0].cpu().permute(1, 2, 0).numpy()
+            orig = images[0].permute(1, 2, 0).numpy()
             orig = (orig - orig.min()) / (orig.max() - orig.min())  # Normalize to [0,1]
             axes[0].imshow(orig)
             axes[0].axis('off')
             axes[0].set_title('Original')
             
             # Reconstruction
-            recon = reconstructions[0].cpu().permute(1, 2, 0).numpy()
+            recon = reconstructions[0].permute(1, 2, 0).numpy()
             recon = (recon - recon.min()) / (recon.max() - recon.min())  # Normalize to [0,1]
             axes[1].imshow(recon)
             axes[1].axis('off')
@@ -309,6 +373,12 @@ class ModelManager:
             save_path = os.path.join(self.save_dir, f"reconstructions_{step}.png")
             plt.savefig(save_path)
             plt.close()
+            
+            # Clear memory
+            del images, reconstructions, latent
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
         except Exception as e:
             self.logger.error(f"Error saving reconstructions: {str(e)}\n{traceback.format_exc()}")
             raise
