@@ -94,7 +94,6 @@ def create_interface() -> gr.Blocks:
                                 label="Weight distribution plot",
                                 show_label=True,
                                 container=False,
-                                height=250
                             )
                     
                     # Sample and Reconstructed images
