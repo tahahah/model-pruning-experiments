@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class ModelPruningUI:
-    def __init__(self, config_path: str = "config.yaml", save_dir: str = "outputs"):
+    def __init__(self, config_path: str = "dcaecore/config.yaml", save_dir: str = "outputs"):
         self.model_manager = ModelManager(config_path, save_dir)
         
     def load_model(self, model_path: str) -> Tuple[str, gr.Plot, gr.Image, gr.Image]:
@@ -126,4 +126,4 @@ def create_interface() -> gr.Blocks:
 
 if __name__ == "__main__":
     interface = create_interface()
-    interface.launch()
+    interface.launch(share=True)
