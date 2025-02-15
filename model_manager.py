@@ -20,6 +20,8 @@ from efficientvit.models.efficientvit.dc_ae import DCAE
 from dcaecore.trainer import DCAETrainer, DCAERunConfig
 from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 from vae_pruning_analysis import fine_grained_prune, analyze_weight_distribution, plot_weight_distributions
+import huggingface_hub
+from dotenv import load_dotenv
 
 class ModelManager:
     """
@@ -490,3 +492,46 @@ class ModelManager:
         except Exception as e:
             self.logger.error(f"Error computing model metrics: {str(e)}\n{traceback.format_exc()}")
             raise
+
+    def upload_to_huggingface(self) -> bool:
+        """Upload equipped model to HuggingFace Hub."""
+        if self.equipped_model is None:
+            self.logger.error("No equipped model to upload")
+            return False
+
+        load_dotenv()  # Load environment variables from .env file
+        
+        if "HF_TOKEN" not in os.environ:
+            self.logger.error("HF_TOKEN not found in environment variables")
+            return False
+            
+        try:
+            # Save model to temporary file
+            file_path = os.path.join(self.save_dir, "equipped_model.pth")
+            torch.save(self.equipped_model.state_dict(), file_path)
+            
+            huggingface_hub.login(token=os.environ["HF_TOKEN"])
+            repo_id = "Tahahah/PrunedPacmanDCAE"
+            
+            try:
+                huggingface_hub.upload_file(
+                    path_or_fileobj=file_path,
+                    path_in_repo=f"checkpoints/{os.path.basename(file_path)}",
+                    repo_id=repo_id,
+                    repo_type="model"
+                )
+                self.logger.info(f"Uploaded checkpoint to HuggingFace: {repo_id}")
+                return True
+            except huggingface_hub.utils.RepositoryNotFoundError:
+                huggingface_hub.create_repo(repo_id, repo_type="model")
+                huggingface_hub.upload_file(
+                    path_or_fileobj=file_path,
+                    path_in_repo=f"checkpoints/{os.path.basename(file_path)}",
+                    repo_id=repo_id,
+                    repo_type="model"
+                )
+                self.logger.info(f"Created repo and uploaded checkpoint to HuggingFace: {repo_id}")
+                return True
+        except Exception as e:
+            self.logger.error(f"Failed to upload checkpoint to HuggingFace: {str(e)}\n{traceback.format_exc()}")
+            return False

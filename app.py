@@ -231,6 +231,14 @@ class PruningUI:
                 "VRAM: N/A"        # vram textbox
             )
     
+    def upload_to_huggingface(self):
+        """Upload equipped model to HuggingFace Hub"""
+        success = self.model_manager.upload_to_huggingface()
+        if success:
+            return "Successfully uploaded model to HuggingFace Hub"
+        else:
+            return "Failed to upload model. Check logs for details."
+    
     def _format_metrics(self, metrics: Dict[str, Any]) -> str:
         """Format metrics dictionary into a readable string"""
         if not metrics:
@@ -462,7 +470,19 @@ def create_ui() -> gr.Blocks:
                         type="filepath"
                     )
                 
-                equip_btn = gr.Button("Promote to Production", variant="primary")
+                with gr.Row():
+                    equip_btn = gr.Button("Promote to Production")
+                    upload_btn = gr.Button("Upload to HuggingFace")
+                equip_status = gr.Textbox(label="Status")
+                
+                equip_btn.click(
+                    ui.equip_model,
+                    outputs=[equip_status]
+                )
+                upload_btn.click(
+                    ui.upload_to_huggingface,
+                    outputs=[equip_status]
+                )
         
         # Event Handlers
         load_btn.click(
@@ -517,18 +537,6 @@ def create_ui() -> gr.Blocks:
                 experimental_recon,
                 experimental_weights,
                 experimental_vram
-            ]
-        )
-        
-        equip_btn.click(
-            fn=ui.equip_model,
-            inputs=[],
-            outputs=[
-                equipped_metrics,
-                equipped_relative,
-                equipped_recon,
-                equipped_weights,
-                equipped_vram
             ]
         )
     
