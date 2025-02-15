@@ -478,17 +478,21 @@ class ModelManager:
             start_time = time.time()
             with torch.no_grad():
                 images = self.sample_batch['data'].to(self.device)
-                _ = model(images)
+                latent = model.encode(images)
+                _ = model.decode(latent)
             latency = (time.time() - start_time) * 1000  # Convert to ms
             
             # Calculate reconstruction loss
-            recon_loss, perceptual_loss = self._calculate_loss(
-                images,
-                model(images)
-            )
+            with torch.no_grad():
+                latent = model.encode(images)
+                reconstructed = model.decode(latent)
+                recon_loss, perceptual_loss = self._calculate_loss(
+                    images,
+                    reconstructed
+                )
             
             # Clean up
-            del images
+            del images, latent, reconstructed
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
