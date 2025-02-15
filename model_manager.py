@@ -477,7 +477,7 @@ class ModelManager:
             # Measure latency
             start_time = time.time()
             with torch.no_grad():
-                images = self.sample_batch['data'].to(model.device)
+                images = self.sample_batch['data'].to(self.device)
                 _ = model(images)
             latency = (time.time() - start_time) * 1000  # Convert to ms
             
