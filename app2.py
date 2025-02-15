@@ -19,10 +19,12 @@ class ModelPruningUI:
             metrics = self.model_manager.load_initial_model(model_path)
             
             # Format metrics text
-            metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
-Full param count: {metrics.get('total_params', 0):,}
-Loss: {metrics.get('reconstruction_loss', 0):.4f}
-Latency: {metrics.get('latency', 0):.4f}ms"""
+            metrics_text = f"""VRAM Usage: {metrics.get('vram_usage', 'N/A')}
+Parameters: {metrics.get('total_params', '0')}
+Sparsity: {metrics.get('sparsity_ratio', '0%')}
+Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
+Inference Latency: {metrics.get('latency', '0 ms')}"""
 
             # Get visualizations
             weight_plot = os.path.join(self.model_manager.save_dir, "weight_distribution_initial.png")
@@ -44,9 +46,9 @@ Latency: {metrics.get('latency', 0):.4f}ms"""
         try:
             metrics = self.model_manager._get_model_metrics(self.model_manager.original_model)
             return f"""Validation Results:
-Reconstruction Loss: {metrics.get('reconstruction_loss', 0):.4f}
-Perceptual Loss: {metrics.get('perceptual_loss', 0):.4f}
-Latency: {metrics.get('latency', 0):.4f}ms"""
+Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
+Inference Latency: {metrics.get('latency', '0 ms')}"""
         except Exception as e:
             logger.error(f"Error during validation: {str(e)}")
             return "Error during validation. Check logs for details."
@@ -72,7 +74,7 @@ def create_interface() -> gr.Blocks:
                         with gr.Column(scale=1):
                             metrics_text = gr.Textbox(
                                 label="Model Metrics",
-                                lines=4,
+                                lines=6,
                                 interactive=False
                             )
                             validate_btn = gr.Button("Validate")

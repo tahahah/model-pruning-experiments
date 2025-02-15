@@ -22,6 +22,7 @@ from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanData
 from vae_pruning_analysis import fine_grained_prune, analyze_weight_distribution, plot_weight_distributions
 import huggingface_hub
 from dotenv import load_dotenv
+import time
 
 class ModelManager:
     """
@@ -457,38 +458,43 @@ class ModelManager:
     def _get_model_metrics(self, model: DCAE) -> Dict[str, Any]:
         """Get model metrics including sparsity and reconstruction loss"""
         try:
-            # Setup dataset if needed (only when computing metrics)
+            # Setup dataset if not already done
             self._setup_dataset_if_needed()
             
-            metrics = {}
+            # Get model parameters and sparsity
+            total_params, nonzero_params = analyze_weight_distribution(model)
+            sparsity_ratio = 1 - (nonzero_params / total_params)
             
-            # Calculate parameter counts and sparsity
-            total_params = 0
-            zero_params = 0
-            for name, param in model.named_parameters():
-                if 'weight' in name:
-                    total_params += param.numel()
-                    zero_params += (param.data.abs() < 1e-6).sum().item()
+            # Calculate memory usage
+            param_memory = sum(p.nelement() * p.element_size() for p in model.parameters()) / (1024 * 1024)  # MB
+            buffer_memory = sum(b.nelement() * b.element_size() for b in model.buffers()) / (1024 * 1024)  # MB
+            if torch.cuda.is_available():
+                vram_usage = f"{param_memory + buffer_memory:.1f} MB"
+                torch.cuda.empty_cache()  # Clear unused memory
+            else:
+                vram_usage = "N/A (CPU)"
             
-            metrics['total_params'] = total_params
-            metrics['nonzero_params'] = total_params - zero_params
-            metrics['sparsity_ratio'] = zero_params / total_params if total_params > 0 else 0
+            # Measure latency
+            start_time = time.time()
+            with torch.no_grad():
+                _ = model(self.sample_batch.to(model.device))
+            latency = (time.time() - start_time) * 1000  # Convert to ms
             
             # Calculate reconstruction loss
-            model.eval()
-            with torch.no_grad():
-                images = self.sample_batch['data'].to(self.device)
-                latent = model.encode(images)
-                reconstructions = model.decode(latent)
-                loss = F.mse_loss(reconstructions, images)
-                metrics['reconstruction_loss'] = loss.item()
-                
-                # Clear memory
-                del images, latent, reconstructions
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+            recon_loss, perceptual_loss = self._calculate_loss(
+                self.sample_batch.to(model.device),
+                model(self.sample_batch.to(model.device))
+            )
             
-            return metrics
+            return {
+                "total_params": f"{total_params:,} weights",
+                "nonzero_params": f"{nonzero_params:,} weights",
+                "sparsity_ratio": f"{sparsity_ratio:.1%}",
+                "vram_usage": vram_usage,
+                "latency": f"{latency:.1f} ms",
+                "reconstruction_loss": f"{recon_loss:.4f} MSE",
+                "perceptual_loss": f"{perceptual_loss:.4f} LPIPS"
+            }
         except Exception as e:
             self.logger.error(f"Error computing model metrics: {str(e)}\n{traceback.format_exc()}")
             raise
