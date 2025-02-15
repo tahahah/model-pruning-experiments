@@ -126,8 +126,8 @@ class ModelManager:
             metrics = self._get_model_metrics(self.original_model)
             
             # Save initial visualizations
-            # self._save_reconstructions(self.original_model, "initial")
-            # self._save_weight_distribution(self.original_model, "initial")
+            self._save_reconstructions(self.original_model, "initial")
+            self._save_weight_distribution(self.original_model, "initial")
             
             # Copy initial visualizations to equipped filenames
             import shutil
@@ -224,8 +224,8 @@ class ModelManager:
             metrics = self._get_model_metrics(self.experimental_model)
             
             # Save visualizations
-            # self._save_reconstructions(self.experimental_model, "after_pruning")
-            # self._save_weight_distribution(self.experimental_model, "after_pruning")
+            self._save_reconstructions(self.experimental_model, "after_pruning")
+            self._save_weight_distribution(self.experimental_model, "after_pruning")
             
             return metrics
         except Exception as e:
