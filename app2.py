@@ -56,18 +56,27 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
 def create_interface() -> gr.Blocks:
     ui = ModelPruningUI()
     
-    with gr.Blocks(title="Model Pruning Studio v2", theme=gr.themes.Soft()) as interface:
+    # I prefer default theme
+    with gr.Blocks(title="Model Pruning Studio v2",) as interface:
         with gr.Tabs():
             # Load Model Tab
             with gr.Tab("Load Model"):
                 with gr.Column():
                     gr.Markdown("### Load Model")
                     with gr.Row():
-                        model_path = gr.Textbox(
-                            label="Model path or HF name",
-                            placeholder="Enter local path or HuggingFace model name"
-                        )
-                        load_btn = gr.Button("Load", variant="primary")
+                        with gr.Column(scale=4):
+                            model_path = gr.Textbox(
+                                label="Model path or HF name",
+                                placeholder="Enter local path or HuggingFace model name",
+                                value="mit-han-lab/dc-ae-f32c32-in-1.0"
+                            )
+                        with gr.Column(scale=1):
+                            load_btn = gr.Button(
+                                "Load",
+                                variant="primary",
+                                scale=1,
+                                min_width=100
+                            )
                     
                     # Metrics and Validate button
                     with gr.Row():
@@ -81,10 +90,11 @@ def create_interface() -> gr.Blocks:
                         
                         # Weight distribution plot
                         with gr.Column(scale=2):
-                            weight_plot = gr.Image(
+                            weight_plot = gr.Plot(
                                 label="Weight distribution plot",
                                 show_label=True,
-                                container=False
+                                container=False,
+                                height=250
                             )
                     
                     # Sample and Reconstructed images

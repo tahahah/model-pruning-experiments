@@ -477,14 +477,20 @@ class ModelManager:
             # Measure latency
             start_time = time.time()
             with torch.no_grad():
-                _ = model(self.sample_batch.to(model.device))
+                images = self.sample_batch['data'].to(model.device)
+                _ = model(images)
             latency = (time.time() - start_time) * 1000  # Convert to ms
             
             # Calculate reconstruction loss
             recon_loss, perceptual_loss = self._calculate_loss(
-                self.sample_batch.to(model.device),
-                model(self.sample_batch.to(model.device))
+                images,
+                model(images)
             )
+            
+            # Clean up
+            del images
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             
             return {
                 "total_params": f"{total_params:,} weights",
