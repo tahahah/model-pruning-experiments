@@ -256,21 +256,7 @@ def create_interface() -> gr.Blocks:
                             )
                             prune_btn = gr.Button("Prune")
                         
-                        with gr.Group():
-                            gr.Markdown("### Train")
-                            n_epochs = gr.Number(
-                                value=1,
-                                label="Number of Epochs",
-                                precision=0
-                            )
-                            steps_per_epoch = gr.Number(
-                                value=100,
-                                label="Steps per Epoch",
-                                precision=0
-                            )
-                            with gr.Accordion("Advanced Settings", open=False):
-                                gr.Markdown("Coming soon...")
-                            train_btn = gr.Button("Train")
+                        
                     
                     # Experimental Model Column
                     with gr.Column():
@@ -291,6 +277,22 @@ def create_interface() -> gr.Blocks:
                                 label="Reconstructed Sample",
                                 show_label=True
                             )
+                            
+                        with gr.Group():
+                            gr.Markdown("### Train")
+                            n_epochs = gr.Number(
+                                value=1,
+                                label="Number of Epochs",
+                                precision=0
+                            )
+                            steps_per_epoch = gr.Number(
+                                value=100,
+                                label="Steps per Epoch",
+                                precision=0
+                            )
+                            with gr.Accordion("Advanced Settings", open=False):
+                                gr.Markdown("Coming soon...")
+                            train_btn = gr.Button("Train")
                         
                         promote_btn = gr.Button(
                             "Promote to Equipped Model",
