@@ -19,12 +19,63 @@ class PacmanDatasetProviderConfig(BaseDataProviderConfig):
     val_split: str = "train[:200]"    # Only get first 200 samples if not streaming
     image_size: int = 512
     verification_mode: str = "no_checks"
+    streaming: bool = False  # Set to True for original streaming behavior
     cache_dir: str = ".cache/pacman_dataset"  # Directory to store cached samples
     batch_size: int = 16
     n_worker: int = 4
     num_replicas: int = 1
     rank: int = 0
     val_steps: int = 100
+
+class StreamingPacmanDataset(IterableDataset):
+    """Original streaming dataset implementation - unchanged"""
+    def __init__(self, cfg: PacmanDatasetProviderConfig, dataset_name: str, split: str):
+        super().__init__()
+        self.cfg = cfg
+        # Remove [:200] from split if present when streaming
+        split = split.split("[")[0] if "[" in split else split
+        self.dataset = load_dataset(
+            dataset_name,
+            split=split,
+            streaming=True,
+            verification_mode=cfg.verification_mode
+        )
+        
+        # Take only first 200 samples if specified in split
+        if "[:200]" in cfg.train_split:
+            self.dataset = self.dataset.take(200)
+            
+        self.transform = self.build_transform()
+        self._iterator = None
+
+    def __iter__(self):
+        self._iterator = iter(self.dataset)
+        return self
+
+    def __next__(self):
+        try:
+            item = next(self._iterator)
+            image = item['frame_image']
+            if not isinstance(image, Image.Image):
+                image = image.convert('RGB')
+            image = self.transform(image)
+            return {"data": image}
+        except StopIteration:
+            self._iterator = iter(self.dataset)  # Reset iterator
+            raise
+        except Exception as e:
+            print(f"Error processing image: {e}")
+            return {"data": torch.zeros(3, self.cfg.image_size, self.cfg.image_size)}
+
+    def __len__(self): 
+        return 200 if "[:200]" in self.cfg.train_split else 100  # Return actual size for subset
+
+    def build_transform(self):
+        return transforms.Compose([
+            transforms.Resize((self.cfg.image_size, self.cfg.image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
 
 class CachedPacmanDataset(Dataset):
     """Dataset that efficiently caches downloaded samples"""
@@ -108,28 +159,48 @@ class SimplePacmanDatasetProvider(BaseDataProvider):
         self.build_datasets()
     
     def build_datasets(self):
-        # Use cached dataset implementation
-        train_dataset = CachedPacmanDataset(self.cfg, self.cfg.train_dataset, self.cfg.train_split)
-        val_dataset = CachedPacmanDataset(self.cfg, self.cfg.val_dataset, self.cfg.val_split)
-        
-        self.train = DataLoader(
-            train_dataset,
-            batch_size=self.cfg.batch_size,
-            num_workers=self.cfg.n_worker,
-            pin_memory=True,
-            shuffle=True  # Enable shuffle for training
-        )
-        
-        self.valid = DataLoader(
-            val_dataset,
-            batch_size=self.cfg.batch_size,
-            num_workers=self.cfg.n_worker,
-            pin_memory=True
-        )
+        if self.cfg.streaming:
+            # Use original streaming implementation
+            train_dataset = StreamingPacmanDataset(self.cfg, self.cfg.train_dataset, self.cfg.train_split)
+            val_dataset = StreamingPacmanDataset(self.cfg, self.cfg.val_dataset, self.cfg.val_split)
+            
+            # Original dataloader config for streaming
+            self.train = DataLoader(
+                train_dataset,
+                batch_size=self.cfg.batch_size,
+                num_workers=self.cfg.n_worker,
+                pin_memory=True
+            )
+            
+            self.valid = DataLoader(
+                val_dataset,
+                batch_size=self.cfg.batch_size,
+                num_workers=self.cfg.n_worker,
+                pin_memory=True
+            )
+        else:
+            # Use cached implementation
+            train_dataset = CachedPacmanDataset(self.cfg, self.cfg.train_dataset, self.cfg.train_split)
+            val_dataset = CachedPacmanDataset(self.cfg, self.cfg.val_dataset, self.cfg.val_split)
+            
+            self.train = DataLoader(
+                train_dataset,
+                batch_size=self.cfg.batch_size,
+                num_workers=self.cfg.n_worker,
+                pin_memory=True,
+                shuffle=True  # Enable shuffle for training
+            )
+            
+            self.valid = DataLoader(
+                val_dataset,
+                batch_size=self.cfg.batch_size,
+                num_workers=self.cfg.n_worker,
+                pin_memory=True
+            )
         
         self.test = self.valid
         return self.train, self.valid, self.test
     
     def set_epoch(self, epoch):
-        """No need to set epoch for cached datasets"""
+        """No need to set epoch for either dataset type"""
         pass
