@@ -259,10 +259,12 @@ class ModelManager:
             trainer.write_train_log = True  # Enable training step logging
             trainer.write_val_log = True    # Enable validation step logging
             trainer.log_interval = 50  # Set logging frequency
-            
+            run_config = self.create_run_config(self.config)
+            run_config.steps_per_epoch = steps_per_epoch
+            run_config.n_epochs = epochs
             # Setup trainer with safe defaults
             trainer.prep_for_training(
-                run_config=self.create_run_config(self.config),
+                run_config=run_config,
                 ema_decay=None,  # EMA is handled by EfficientViT's trainer
                 amp=None  # AMP is handled by EfficientViT's trainer
             )
