@@ -474,22 +474,16 @@ class ModelManager:
             else:
                 vram_usage = "N/A (CPU)"
             
-            # Measure latency
+            # Do inference once and measure everything
+            images = self.sample_batch['data'].to(self.device)
             start_time = time.time()
-            with torch.no_grad():
-                images = self.sample_batch['data'].to(self.device)
-                latent = model.encode(images)
-                _ = model.decode(latent)
-            latency = (time.time() - start_time) * 1000  # Convert to ms
-            
-            # Calculate reconstruction loss
             with torch.no_grad():
                 latent = model.encode(images)
                 reconstructed = model.decode(latent)
-                recon_loss, perceptual_loss = self._calculate_loss(
-                    images,
-                    reconstructed
-                )
+            latency = (time.time() - start_time) * 1000  # Convert to ms
+            
+            # Calculate losses
+            recon_loss, perceptual_loss = self._calculate_loss(images, reconstructed)
             
             # Clean up
             del images, latent, reconstructed
