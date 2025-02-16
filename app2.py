@@ -122,6 +122,15 @@ Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error promoting model: {str(e)}")
             return f"Error promoting model: {str(e)}", None, None
 
+    def save_to_huggingface(self) -> str:
+        """Save equipped model to HuggingFace Hub"""
+        try:
+            self.model_manager.upload_to_huggingface()
+            return f"Successfully saved model to huggingface"
+        except Exception as e:
+            logger.error(f"Error saving to HuggingFace: {str(e)}")
+            return f"Error saving to HuggingFace: {str(e)}"
+
 def create_interface() -> gr.Blocks:
     ui = ModelPruningUI()
     
@@ -188,17 +197,14 @@ def create_interface() -> gr.Blocks:
                             lines=4,
                             interactive=False
                         )
-                        equipped_validate = gr.Button("Validate")
-                        
                         with gr.Row():
-                            equipped_sample = gr.Image(
-                                label="Sample Image",
-                                show_label=True
-                            )
-                            equipped_reconstructed = gr.Image(
-                                label="Reconstructed Sample",
-                                show_label=True
-                            )
+                            equipped_validate = gr.Button("Validate")
+                            save_hf = gr.Button("Save to HuggingFace", variant="secondary")
+                        
+                        save_status = gr.Textbox(
+                            label="Save Status",
+                            visible=True
+                        )
                         
                         with gr.Group():
                             gr.Markdown("### Prune")
@@ -279,8 +285,8 @@ def create_interface() -> gr.Blocks:
             inputs=[],
             outputs=[
                 equipped_metrics,
-                equipped_sample,
-                equipped_reconstructed
+                sample_image,
+                reconstructed
             ]
         )
         
@@ -325,9 +331,15 @@ def create_interface() -> gr.Blocks:
             inputs=[],
             outputs=[
                 equipped_metrics,
-                equipped_sample,
-                equipped_reconstructed
+                sample_image,
+                reconstructed
             ]
+        )
+        
+        save_hf.click(
+            fn=ui.save_to_huggingface,
+            inputs=[],
+            outputs=[save_status]
         )
     
     return interface
