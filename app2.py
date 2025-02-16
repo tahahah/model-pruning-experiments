@@ -39,7 +39,7 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
             )
         except Exception as e:
             logger.error(f"Error loading model: {str(e)}")
-            return "Error loading model. Check logs for details.", None, None, None
+            return f"Error loading model: {str(e)}", None, None, None
             
     def validate_model(self) -> str:
         """Run validation on currently loaded model"""
@@ -51,7 +51,7 @@ Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
 Inference Latency: {metrics.get('latency', '0 ms')}"""
         except Exception as e:
             logger.error(f"Error during validation: {str(e)}")
-            return "Error during validation. Check logs for details."
+            return f"Error during validation: {str(e)}"
 
 def create_interface() -> gr.Blocks:
     ui = ModelPruningUI()
