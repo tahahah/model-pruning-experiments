@@ -141,7 +141,7 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
     def promote_to_equipped(self) -> Tuple[str, str, str]:
         """Promote experimental model to equipped model"""
         try:
-            self.model_manager.promote_experimental_to_equipped()
+            self.model_manager.equip_experimental_model()
             return self.get_equipped_metrics()
         except Exception as e:
             logger.error(f"Error promoting model: {str(e)}")
