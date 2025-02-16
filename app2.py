@@ -56,19 +56,22 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
     def get_equipped_metrics(self) -> Tuple[str, str, str]:
         """Get metrics and visualizations for equipped model"""
         try:
-            metrics = self.model_manager._get_model_metrics(self.model_manager.equipped_model)
+            metrics = self.model_manager._get_model_metrics(
+                self.model_manager.equipped_model,
+                save_reconstructions=True,
+                step="equipped"
+            )
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
 Full param count: {metrics.get('total_params', '0')}
 Loss: {metrics.get('reconstruction_loss', '0 MSE')}
 Latency: {metrics.get('latency', '0 ms')}"""
 
-            sample_image = os.path.join(self.model_manager.save_dir, "sample_image_equipped.png")
-            reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_equipped.png")
+            sample_image = os.path.join(self.model_manager.save_dir, "reconstruction_equipped.png")
             
             return (
                 metrics_text,
                 sample_image if os.path.exists(sample_image) else None,
-                reconstructed if os.path.exists(reconstructed) else None
+                sample_image if os.path.exists(sample_image) else None
             )
         except Exception as e:
             logger.error(f"Error getting equipped metrics: {str(e)}")
@@ -77,19 +80,22 @@ Latency: {metrics.get('latency', '0 ms')}"""
     def get_experimental_metrics(self) -> Tuple[str, str, str]:
         """Get metrics and visualizations for experimental model"""
         try:
-            metrics = self.model_manager._get_model_metrics(self.model_manager.experimental_model)
+            metrics = self.model_manager._get_model_metrics(
+                self.model_manager.experimental_model,
+                save_reconstructions=True,
+                step="experimental"
+            )
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
 Full param count: {metrics.get('total_params', '0')}
 Loss: {metrics.get('reconstruction_loss', '0 MSE')}
 Latency: {metrics.get('latency', '0 ms')}"""
 
-            sample_image = os.path.join(self.model_manager.save_dir, "sample_image_experimental.png")
-            reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_experimental.png")
+            sample_image = os.path.join(self.model_manager.save_dir, "reconstruction_experimental.png")
             
             return (
                 metrics_text,
                 sample_image if os.path.exists(sample_image) else None,
-                reconstructed if os.path.exists(reconstructed) else None
+                sample_image if os.path.exists(sample_image) else None
             )
         except Exception as e:
             logger.error(f"Error getting experimental metrics: {str(e)}")
