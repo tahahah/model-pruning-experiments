@@ -63,6 +63,7 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
             )
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
 Parameter Count: {metrics.get('total_params', '0')}
+Nonzero Parameters: {metrics.get('nonzero_params', '0')}
 Sparsity: {metrics.get('sparsity_ratio', '0%')}
 Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
 Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
@@ -89,6 +90,7 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
             )
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
 Parameter Count: {metrics.get('total_params', '0')}
+Nonzero Parameters: {metrics.get('nonzero_params', '0')}
 Sparsity: {metrics.get('sparsity_ratio', '0%')}
 Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
 Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
