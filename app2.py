@@ -53,11 +53,79 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error during validation: {str(e)}")
             return f"Error during validation: {str(e)}"
 
+    def get_equipped_metrics(self) -> Tuple[str, gr.Image, gr.Image]:
+        """Get metrics and visualizations for equipped model"""
+        try:
+            metrics = self.model_manager._get_model_metrics(self.model_manager.equipped_model)
+            metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
+Full param count: {metrics.get('total_params', '0')}
+Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Latency: {metrics.get('latency', '0 ms')}"""
+
+            sample_image = os.path.join(self.model_manager.save_dir, "sample_image_equipped.png")
+            reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_equipped.png")
+            
+            return (
+                metrics_text,
+                sample_image if os.path.exists(sample_image) else None,
+                reconstructed if os.path.exists(reconstructed) else None
+            )
+        except Exception as e:
+            logger.error(f"Error getting equipped metrics: {str(e)}")
+            return f"Error getting equipped metrics: {str(e)}", None, None
+
+    def get_experimental_metrics(self) -> Tuple[str, gr.Image, gr.Image]:
+        """Get metrics and visualizations for experimental model"""
+        try:
+            metrics = self.model_manager._get_model_metrics(self.model_manager.experimental_model)
+            metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
+Full param count: {metrics.get('total_params', '0')}
+Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Latency: {metrics.get('latency', '0 ms')}"""
+
+            sample_image = os.path.join(self.model_manager.save_dir, "sample_image_experimental.png")
+            reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_experimental.png")
+            
+            return (
+                metrics_text,
+                sample_image if os.path.exists(sample_image) else None,
+                reconstructed if os.path.exists(reconstructed) else None
+            )
+        except Exception as e:
+            logger.error(f"Error getting experimental metrics: {str(e)}")
+            return f"Error getting experimental metrics: {str(e)}", None, None
+
+    def prune_model(self, pruning_method: str, sparsity_ratio: float) -> Tuple[str, gr.Image, gr.Image]:
+        """Prune the model using specified method and ratio"""
+        try:
+            self.model_manager.create_experimental_model(pruning_method, sparsity_ratio)
+            return self.get_experimental_metrics()
+        except Exception as e:
+            logger.error(f"Error pruning model: {str(e)}")
+            return f"Error pruning model: {str(e)}", None, None
+
+    def train_model(self, n_epochs: int, steps_per_epoch: int) -> Tuple[str, gr.Image, gr.Image]:
+        """Train the experimental model"""
+        try:
+            self.model_manager.train_experimental_model(n_epochs, steps_per_epoch)
+            return self.get_experimental_metrics()
+        except Exception as e:
+            logger.error(f"Error training model: {str(e)}")
+            return f"Error training model: {str(e)}", None, None
+
+    def promote_to_equipped(self) -> Tuple[str, gr.Image, gr.Image]:
+        """Promote experimental model to equipped model"""
+        try:
+            self.model_manager.promote_experimental_to_equipped()
+            return self.get_equipped_metrics()
+        except Exception as e:
+            logger.error(f"Error promoting model: {str(e)}")
+            return f"Error promoting model: {str(e)}", None, None
+
 def create_interface() -> gr.Blocks:
     ui = ModelPruningUI()
     
-    # I prefer default theme
-    with gr.Blocks(title="Model Pruning Studio v2",) as interface:
+    with gr.Blocks(title="Model Pruning Studio v2") as interface:
         with gr.Tabs():
             # Load Model Tab
             with gr.Tab("Load Model"):
@@ -109,9 +177,84 @@ def create_interface() -> gr.Blocks:
                             container=True
                         )
             
-            # Placeholder for Prune and Finetune tab
+            # Prune and Finetune tab
             with gr.Tab("Prune and Finetune"):
-                gr.Markdown("### Coming Soon")
+                with gr.Row():
+                    # Equipped Model Column
+                    with gr.Column():
+                        gr.Markdown("### Equipped Model")
+                        equipped_metrics = gr.Textbox(
+                            label="Metrics",
+                            lines=4,
+                            interactive=False
+                        )
+                        equipped_validate = gr.Button("Validate")
+                        
+                        with gr.Row():
+                            equipped_sample = gr.Image(
+                                label="Sample Image",
+                                show_label=True
+                            )
+                            equipped_reconstructed = gr.Image(
+                                label="Reconstructed Sample",
+                                show_label=True
+                            )
+                        
+                        with gr.Group():
+                            gr.Markdown("### Prune")
+                            pruning_method = gr.Dropdown(
+                                choices=["magnitude", "random"],
+                                label="Pruning Method",
+                                value="magnitude"
+                            )
+                            sparsity_ratio = gr.Slider(
+                                minimum=0.0,
+                                maximum=1.0,
+                                value=0.5,
+                                label="Sparsity Ratio"
+                            )
+                            prune_btn = gr.Button("Prune")
+                        
+                        with gr.Group():
+                            gr.Markdown("### Train")
+                            n_epochs = gr.Number(
+                                value=1,
+                                label="Number of Epochs",
+                                precision=0
+                            )
+                            steps_per_epoch = gr.Number(
+                                value=100,
+                                label="Steps per Epoch",
+                                precision=0
+                            )
+                            with gr.Accordion("Advanced Settings", open=False):
+                                gr.Markdown("Coming soon...")
+                            train_btn = gr.Button("Train")
+                    
+                    # Experimental Model Column
+                    with gr.Column():
+                        gr.Markdown("### Resultant Model")
+                        experimental_metrics = gr.Textbox(
+                            label="Metrics",
+                            lines=4,
+                            interactive=False
+                        )
+                        experimental_validate = gr.Button("Validate")
+                        
+                        with gr.Row():
+                            experimental_sample = gr.Image(
+                                label="Sample Image",
+                                show_label=True
+                            )
+                            experimental_reconstructed = gr.Image(
+                                label="Reconstructed Sample",
+                                show_label=True
+                            )
+                        
+                        promote_btn = gr.Button(
+                            "Promote to Equipped Model",
+                            variant="primary"
+                        )
         
         # Event handlers
         load_btn.click(
@@ -129,6 +272,62 @@ def create_interface() -> gr.Blocks:
             fn=ui.validate_model,
             inputs=[],
             outputs=[metrics_text]
+        )
+        
+        equipped_validate.click(
+            fn=ui.get_equipped_metrics,
+            inputs=[],
+            outputs=[
+                equipped_metrics,
+                equipped_sample,
+                equipped_reconstructed
+            ]
+        )
+        
+        experimental_validate.click(
+            fn=ui.get_experimental_metrics,
+            inputs=[],
+            outputs=[
+                experimental_metrics,
+                experimental_sample,
+                experimental_reconstructed
+            ]
+        )
+        
+        prune_btn.click(
+            fn=ui.prune_model,
+            inputs=[
+                pruning_method,
+                sparsity_ratio
+            ],
+            outputs=[
+                experimental_metrics,
+                experimental_sample,
+                experimental_reconstructed
+            ]
+        )
+        
+        train_btn.click(
+            fn=ui.train_model,
+            inputs=[
+                n_epochs,
+                steps_per_epoch
+            ],
+            outputs=[
+                experimental_metrics,
+                experimental_sample,
+                experimental_reconstructed
+            ]
+        )
+        
+        promote_btn.click(
+            fn=ui.promote_to_equipped,
+            inputs=[],
+            outputs=[
+                equipped_metrics,
+                equipped_sample,
+                equipped_reconstructed
+            ]
         )
     
     return interface
