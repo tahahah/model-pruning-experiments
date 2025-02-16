@@ -13,7 +13,7 @@ class ModelPruningUI:
     def __init__(self, config_path: str = "dcaecore/config.yaml", save_dir: str = "outputs"):
         self.model_manager = ModelManager(config_path, save_dir)
         
-    def load_model(self, model_path: str) -> Tuple[str, gr.Plot, gr.Image, gr.Image]:
+    def load_model(self, model_path: str) -> Tuple[str, str, str, str]:
         """Load a model and return its metrics and visualizations"""
         try:
             metrics = self.model_manager.load_initial_model(model_path)
@@ -53,7 +53,7 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error during validation: {str(e)}")
             return f"Error during validation: {str(e)}"
 
-    def get_equipped_metrics(self) -> Tuple[str, gr.Image, gr.Image]:
+    def get_equipped_metrics(self) -> Tuple[str, str, str]:
         """Get metrics and visualizations for equipped model"""
         try:
             metrics = self.model_manager._get_model_metrics(self.model_manager.equipped_model)
@@ -74,7 +74,7 @@ Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error getting equipped metrics: {str(e)}")
             return f"Error getting equipped metrics: {str(e)}", None, None
 
-    def get_experimental_metrics(self) -> Tuple[str, gr.Image, gr.Image]:
+    def get_experimental_metrics(self) -> Tuple[str, str, str]:
         """Get metrics and visualizations for experimental model"""
         try:
             metrics = self.model_manager._get_model_metrics(self.model_manager.experimental_model)
@@ -95,7 +95,7 @@ Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error getting experimental metrics: {str(e)}")
             return f"Error getting experimental metrics: {str(e)}", None, None
 
-    def prune_model(self, pruning_method: str, sparsity_ratio: float) -> Tuple[str, gr.Image, gr.Image]:
+    def prune_model(self, pruning_method: str, sparsity_ratio: float) -> Tuple[str, str, str]:
         """Prune the model using specified method and ratio"""
         try:
             self.model_manager.create_experimental_model(pruning_method, sparsity_ratio)
@@ -104,7 +104,7 @@ Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error pruning model: {str(e)}")
             return f"Error pruning model: {str(e)}", None, None
 
-    def train_model(self, n_epochs: int, steps_per_epoch: int) -> Tuple[str, gr.Image, gr.Image]:
+    def train_model(self, n_epochs: int, steps_per_epoch: int) -> Tuple[str, str, str]:
         """Train the experimental model"""
         try:
             self.model_manager.train_experimental_model(n_epochs, steps_per_epoch)
@@ -113,7 +113,7 @@ Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error training model: {str(e)}")
             return f"Error training model: {str(e)}", None, None
 
-    def promote_to_equipped(self) -> Tuple[str, gr.Image, gr.Image]:
+    def promote_to_equipped(self) -> Tuple[str, str, str]:
         """Promote experimental model to equipped model"""
         try:
             self.model_manager.promote_experimental_to_equipped()
@@ -167,7 +167,7 @@ def create_interface() -> gr.Blocks:
                         
                         # Weight distribution plot
                         with gr.Column(scale=2):
-                            weight_plot = gr.Plot(
+                            weight_plot = gr.Image(
                                 label="Weight distribution plot",
                                 show_label=True,
                                 container=False,
