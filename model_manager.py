@@ -392,7 +392,7 @@ class ModelManager:
             
             # Save reconstructions if requested
             if save_reconstructions and step:
-                self._save_reconstruction_batch(images, reconstructed, step)
+                self._save_reconstruction_batch(images, reconstructed, step, loss)
             
             # Clean up
             del images, latent, reconstructed
@@ -412,7 +412,7 @@ class ModelManager:
             self.logger.error(f"Error computing model metrics: {str(e)}\n{traceback.format_exc()}")
             raise
 
-    def _save_reconstruction_batch(self, original: torch.Tensor, reconstructed: torch.Tensor, step: str):
+    def _save_reconstruction_batch(self, original: torch.Tensor, reconstructed: torch.Tensor, step: str, loss = -1):
         """Save reconstruction visualizations for a batch"""
         try:
             # Save reconstruction comparison
@@ -423,6 +423,7 @@ class ModelManager:
             axes[1].imshow(reconstructed[0].cpu().permute(1, 2, 0))
             axes[1].set_title("Reconstructed")
             axes[1].axis("off")
+            plt.suptitle(f"Reconstruction Comparison - {step} | Weighted Loss: {loss:.4f}")
             plt.tight_layout()
             plt.savefig(os.path.join(self.save_dir, f"reconstruction_{step}.png"))
             plt.close()
