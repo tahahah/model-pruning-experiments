@@ -27,7 +27,7 @@ Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
 Inference Latency: {metrics.get('latency', '0 ms')}"""
 
             # Get visualizations
-            weight_plot = os.path.join(self.model_manager.save_dir, "weight_distribution_initial.png")
+            weight_plot = os.path.join(self.model_manager.save_dir, "weight_dist_initial.png")
             sample_image = os.path.join(self.model_manager.save_dir, "sample_image_initial.png")
             reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_initial.png")
             
