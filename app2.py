@@ -62,9 +62,11 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
                 step="equipped"
             )
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
-Full param count: {metrics.get('total_params', '0')}
-Loss: {metrics.get('reconstruction_loss', '0 MSE')}
-Latency: {metrics.get('latency', '0 ms')}"""
+Parameter Count: {metrics.get('total_params', '0')}
+Sparsity: {metrics.get('sparsity_ratio', '0%')}
+Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
+Inference Latency: {metrics.get('latency', '0 ms')}"""
 
             sample_image = os.path.join(self.model_manager.save_dir, "reconstruction_equipped.png")
             
@@ -86,9 +88,11 @@ Latency: {metrics.get('latency', '0 ms')}"""
                 step="experimental"
             )
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
-Full param count: {metrics.get('total_params', '0')}
-Loss: {metrics.get('reconstruction_loss', '0 MSE')}
-Latency: {metrics.get('latency', '0 ms')}"""
+Parameter Count: {metrics.get('total_params', '0')}
+Sparsity: {metrics.get('sparsity_ratio', '0%')}
+Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
+Inference Latency: {metrics.get('latency', '0 ms')}"""
 
             sample_image = os.path.join(self.model_manager.save_dir, "reconstruction_experimental.png")
             
@@ -106,9 +110,11 @@ Latency: {metrics.get('latency', '0 ms')}"""
         try:
             metrics = self.model_manager.prune_experimental_model(sparsity_ratio)
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
-Full param count: {metrics.get('total_params', '0')}
-Loss: {metrics.get('reconstruction_loss', '0 MSE')}
-Latency: {metrics.get('latency', '0 ms')}"""
+Parameter Count: {metrics.get('total_params', '0')}
+Sparsity: {metrics.get('sparsity_ratio', '0%')}
+Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
+Inference Latency: {metrics.get('latency', '0 ms')}"""
 
             sample_image = os.path.join(self.model_manager.save_dir, "reconstruction_after_pruning.png")
             
@@ -211,7 +217,7 @@ def create_interface() -> gr.Blocks:
                         gr.Markdown("### Equipped Model")
                         equipped_metrics = gr.Textbox(
                             label="Metrics",
-                            lines=4,
+                            lines=6,
                             interactive=False
                         )
                         with gr.Row():
@@ -269,7 +275,7 @@ def create_interface() -> gr.Blocks:
                         gr.Markdown("### Resultant Model")
                         experimental_metrics = gr.Textbox(
                             label="Metrics",
-                            lines=4,
+                            lines=6,
                             interactive=False
                         )
                         experimental_validate = gr.Button("Validate")
