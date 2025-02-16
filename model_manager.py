@@ -385,7 +385,10 @@ class ModelManager:
             latency = (time.time() - start_time) * 1000  # Convert to ms
             
             # Calculate losses
-            recon_loss, perceptual_loss = self._calculate_loss(images, reconstructed)
+            loss_dict = self._calculate_loss(images, reconstructed)
+            loss = loss_dict['loss']
+            recon_loss = loss_dict['recon_loss']
+            perceptual_loss = loss_dict['perceptual_loss']
             
             # Save reconstructions if requested
             if save_reconstructions and step:
