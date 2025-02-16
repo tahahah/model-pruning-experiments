@@ -98,8 +98,20 @@ Latency: {metrics.get('latency', '0 ms')}"""
     def prune_model(self, pruning_method: str, sparsity_ratio: float) -> Tuple[str, str, str]:
         """Prune the model using specified method and ratio"""
         try:
-            self.model_manager.create_experimental_model(pruning_method, sparsity_ratio)
-            return self.get_experimental_metrics()
+            metrics = self.model_manager.prune_experimental_model(sparsity_ratio)
+            metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
+Full param count: {metrics.get('total_params', '0')}
+Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Latency: {metrics.get('latency', '0 ms')}"""
+
+            sample_image = os.path.join(self.model_manager.save_dir, "sample_image_experimental.png")
+            reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_experimental.png")
+            
+            return (
+                metrics_text,
+                sample_image if os.path.exists(sample_image) else None,
+                reconstructed if os.path.exists(reconstructed) else None
+            )
         except Exception as e:
             logger.error(f"Error pruning model: {str(e)}")
             return f"Error pruning model: {str(e)}", None, None
