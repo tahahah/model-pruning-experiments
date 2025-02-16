@@ -104,13 +104,12 @@ Full param count: {metrics.get('total_params', '0')}
 Loss: {metrics.get('reconstruction_loss', '0 MSE')}
 Latency: {metrics.get('latency', '0 ms')}"""
 
-            sample_image = os.path.join(self.model_manager.save_dir, "sample_image_experimental.png")
-            reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_experimental.png")
+            sample_image = os.path.join(self.model_manager.save_dir, "reconstruction_after_pruning.png")
             
             return (
                 metrics_text,
                 sample_image if os.path.exists(sample_image) else None,
-                reconstructed if os.path.exists(reconstructed) else None
+                sample_image if os.path.exists(sample_image) else None
             )
         except Exception as e:
             logger.error(f"Error pruning model: {str(e)}")
@@ -218,6 +217,16 @@ def create_interface() -> gr.Blocks:
                             visible=True
                         )
                         
+                        with gr.Row():
+                            equipped_sample = gr.Image(
+                                label="Sample Image",
+                                show_label=True
+                            )
+                            equipped_reconstructed = gr.Image(
+                                label="Reconstructed Sample",
+                                show_label=True
+                            )
+                        
                         with gr.Group():
                             gr.Markdown("### Prune")
                             pruning_method = gr.Dropdown(
@@ -297,8 +306,8 @@ def create_interface() -> gr.Blocks:
             inputs=[],
             outputs=[
                 equipped_metrics,
-                sample_image,
-                reconstructed
+                equipped_sample,
+                equipped_reconstructed
             ]
         )
         
@@ -343,8 +352,8 @@ def create_interface() -> gr.Blocks:
             inputs=[],
             outputs=[
                 equipped_metrics,
-                sample_image,
-                reconstructed
+                equipped_sample,
+                equipped_reconstructed
             ]
         )
         
