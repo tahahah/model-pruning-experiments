@@ -124,16 +124,15 @@ class ModelManager:
             
             # Get initial metrics and save visualizations
             self.logger.info("Computing metrics and saving visualizations...")
-            metrics = self._get_model_metrics(self.original_model)
+            metrics = self._get_model_metrics(self.original_model, save_reconstructions=True, step="initial")
             
             # Save initial visualizations
-            self._save_reconstructions(self.original_model, "initial")
             self._save_weight_distribution(self.original_model, "initial")
             
             # Copy initial visualizations to equipped filenames
             import shutil
-            recon_src = os.path.join(self.save_dir, "reconstructions_initial.png")
-            recon_dst = os.path.join(self.save_dir, "reconstructions_equipped.png")
+            recon_src = os.path.join(self.save_dir, "reconstruction_initial.png")
+            recon_dst = os.path.join(self.save_dir, "reconstruction_equipped.png")
             weight_src = os.path.join(self.save_dir, "weight_dist_initial.png")
             weight_dst = os.path.join(self.save_dir, "weight_dist_equipped.png")
             
@@ -222,10 +221,9 @@ class ModelManager:
             self.experimental_model = fine_grained_prune(self.experimental_model, sparsity)
             
             # Get metrics after pruning
-            metrics = self._get_model_metrics(self.experimental_model)
+            metrics = self._get_model_metrics(self.experimental_model, save_reconstructions=True, step="after_pruning")
             
             # Save visualizations
-            self._save_reconstructions(self.experimental_model, "after_pruning")
             self._save_weight_distribution(self.experimental_model, "after_pruning")
             
             return metrics
@@ -275,10 +273,10 @@ class ModelManager:
             trainer.train()
             
             # Save visualizations
-            self._save_reconstructions(self.experimental_model, "after_training")
+            metrics = self._get_model_metrics(self.experimental_model, save_reconstructions=True, step="after_training")
             self._save_weight_distribution(self.experimental_model, "after_training")
             
-            return self._get_model_metrics(self.experimental_model)
+            return metrics
         except Exception as e:
             self.logger.error(f"Error training experimental model: {str(e)}\n{traceback.format_exc()}")
             raise
@@ -313,8 +311,7 @@ class ModelManager:
                 torch.cuda.empty_cache()
             
             # Save visualizations of newly equipped model
-            metrics = self._get_model_metrics(self.equipped_model)
-            self._save_reconstructions(self.equipped_model, "equipped")
+            metrics = self._get_model_metrics(self.equipped_model, save_reconstructions=True, step="equipped")
             self._save_weight_distribution(self.equipped_model, "equipped")
             
             if torch.cuda.is_available():
@@ -351,53 +348,81 @@ class ModelManager:
             self.logger.error(f"Error calculating loss: {str(e)}\n{traceback.format_exc()}")
             raise
     
-    def _save_reconstructions(self, model: DCAE, step: str):
-        """Save reconstruction visualizations"""
+    def _get_model_metrics(self, model: DCAE, save_reconstructions: bool = False, step: str = "") -> Dict[str, Any]:
+        """Get model metrics including sparsity and reconstruction loss
+        
+        Args:
+            model: The model to evaluate
+            save_reconstructions: If True, save reconstruction visualizations
+            step: Step identifier for saving reconstructions (e.g. "initial", "after_training")
+            
+        Returns:
+            Dict containing model metrics
+        """
         try:
-            model.eval()
+            # Setup dataset if not already done
+            self._setup_dataset_if_needed()
+            
+            # Get model parameters and sparsity
+            total_params, nonzero_params = analyze_weight_distribution(model)
+            sparsity_ratio = 1 - (nonzero_params / total_params)
+            
+            # Calculate memory usage
+            param_memory = sum(p.nelement() * p.element_size() for p in model.parameters()) / (1024 * 1024)  # MB
+            buffer_memory = sum(b.nelement() * b.element_size() for b in model.buffers()) / (1024 * 1024)  # MB
+            if torch.cuda.is_available():
+                vram_usage = f"{param_memory + buffer_memory:.1f} MB"
+                torch.cuda.empty_cache()  # Clear unused memory
+            else:
+                vram_usage = "N/A (CPU)"
+            
+            # Do inference once and measure everything
+            images = self.sample_batch['data'].to(self.device)
+            start_time = time.time()
             with torch.no_grad():
-                x = self.sample_batch['data'].to(self.device)
-                # Get reconstructions
-                latent = model.encode(x)
-                y = model.decode(latent)
-                
-                # Calculate reconstruction loss
-                loss = F.mse_loss(y, x).item()
-                
-                # Create a grid of original vs reconstructed images
-                n_samples = min(4, x.size(0))  # Show up to 4 samples
-                plt.figure(figsize=(12, 3*n_samples))
-                
-                for idx in range(n_samples):
-                    # Original image
-                    plt.subplot(n_samples, 2, 2*idx + 1)
-                    original_img = x[idx].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
-                    plt.imshow(original_img)
-                    plt.title(f"Original Image {idx+1}")
-                    plt.axis('off')
-                    
-                    # Reconstructed image
-                    plt.subplot(n_samples, 2, 2*idx + 2)
-                    reconstructed_img = y[idx].cpu().numpy().transpose(1, 2, 0) * 0.5 + 0.5
-                    plt.imshow(reconstructed_img)
-                    plt.title(f"Reconstructed {idx+1}")
-                    plt.axis('off')
-                
-                plt.suptitle(f"{step.capitalize()} Model - MSE Loss: {loss:.4f}")
-                plt.tight_layout()
-                
-                # Save the comparison plot
-                save_path = os.path.join(self.save_dir, f"reconstructions_{step}.png")
-                plt.savefig(save_path)
-                plt.close()
-                
-                # Clear memory
-                del x, y, latent
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    
-                self.logger.info(f"Saved reconstruction comparison to {save_path}")
-                
+                latent = model.encode(images)
+                reconstructed = model.decode(latent)
+            latency = (time.time() - start_time) * 1000  # Convert to ms
+            
+            # Calculate losses
+            recon_loss, perceptual_loss = self._calculate_loss(images, reconstructed)
+            
+            # Save reconstructions if requested
+            if save_reconstructions and step:
+                self._save_reconstruction_batch(images, reconstructed, step)
+            
+            # Clean up
+            del images, latent, reconstructed
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            return {
+                "total_params": f"{total_params:,} weights",
+                "nonzero_params": f"{nonzero_params:,} weights",
+                "sparsity_ratio": f"{sparsity_ratio:.1%}",
+                "vram_usage": vram_usage,
+                "latency": f"{latency:.1f} ms",
+                "reconstruction_loss": f"{recon_loss:.4f} MSE",
+                "perceptual_loss": f"{perceptual_loss:.4f} LPIPS"
+            }
+        except Exception as e:
+            self.logger.error(f"Error computing model metrics: {str(e)}\n{traceback.format_exc()}")
+            raise
+
+    def _save_reconstruction_batch(self, original: torch.Tensor, reconstructed: torch.Tensor, step: str):
+        """Save reconstruction visualizations for a batch"""
+        try:
+            # Save reconstruction comparison
+            fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+            axes[0].imshow(original[0].cpu().permute(1, 2, 0))
+            axes[0].set_title("Original")
+            axes[0].axis("off")
+            axes[1].imshow(reconstructed[0].cpu().permute(1, 2, 0))
+            axes[1].set_title("Reconstructed")
+            axes[1].axis("off")
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.save_dir, f"reconstruction_{step}.png"))
+            plt.close()
         except Exception as e:
             self.logger.error(f"Error saving reconstructions: {str(e)}\n{traceback.format_exc()}")
             raise
@@ -455,54 +480,6 @@ class ModelManager:
             self.logger.error(f"Error saving weight distribution: {str(e)}\n{traceback.format_exc()}")
             raise
     
-    def _get_model_metrics(self, model: DCAE) -> Dict[str, Any]:
-        """Get model metrics including sparsity and reconstruction loss"""
-        try:
-            # Setup dataset if not already done
-            self._setup_dataset_if_needed()
-            
-            # Get model parameters and sparsity
-            total_params, nonzero_params = analyze_weight_distribution(model)
-            sparsity_ratio = 1 - (nonzero_params / total_params)
-            
-            # Calculate memory usage
-            param_memory = sum(p.nelement() * p.element_size() for p in model.parameters()) / (1024 * 1024)  # MB
-            buffer_memory = sum(b.nelement() * b.element_size() for b in model.buffers()) / (1024 * 1024)  # MB
-            if torch.cuda.is_available():
-                vram_usage = f"{param_memory + buffer_memory:.1f} MB"
-                torch.cuda.empty_cache()  # Clear unused memory
-            else:
-                vram_usage = "N/A (CPU)"
-            
-            # Do inference once and measure everything
-            images = self.sample_batch['data'].to(self.device)
-            start_time = time.time()
-            with torch.no_grad():
-                latent = model.encode(images)
-                reconstructed = model.decode(latent)
-            latency = (time.time() - start_time) * 1000  # Convert to ms
-            
-            # Calculate losses
-            recon_loss, perceptual_loss = self._calculate_loss(images, reconstructed)
-            
-            # Clean up
-            del images, latent, reconstructed
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            return {
-                "total_params": f"{total_params:,} weights",
-                "nonzero_params": f"{nonzero_params:,} weights",
-                "sparsity_ratio": f"{sparsity_ratio:.1%}",
-                "vram_usage": vram_usage,
-                "latency": f"{latency:.1f} ms",
-                "reconstruction_loss": f"{recon_loss:.4f} MSE",
-                "perceptual_loss": f"{perceptual_loss:.4f} LPIPS"
-            }
-        except Exception as e:
-            self.logger.error(f"Error computing model metrics: {str(e)}\n{traceback.format_exc()}")
-            raise
-
     def upload_to_huggingface(self) -> bool:
         """Upload equipped model to HuggingFace Hub."""
         if self.equipped_model is None:
