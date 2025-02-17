@@ -209,7 +209,7 @@ class DCAETrainer(Trainer):
                          self.run_config.perceptual_weight * perceptual_loss)
             
         result = {
-            "loss": total_loss.detach().cpu(),
+            "loss": total_loss,  # Keep on GPU for backward
             "recon_loss": recon_loss.detach().cpu(),
             "perceptual_loss": perceptual_loss.detach().cpu(),
             "reconstructed": reconstructed.detach().cpu()
@@ -233,46 +233,50 @@ class DCAETrainer(Trainer):
                 feed_dict = self.before_step(feed_dict)
                 self.optimizer.zero_grad()
                 
+                # Run training step
                 output_dict = self.run_step(feed_dict)
                 
                 # Scale loss and backward
                 self.scaler.scale(output_dict["loss"]).backward()
                 
-                # Update metrics
+                # Update metrics (using CPU tensors)
                 train_loss.update(output_dict["loss"].item(), feed_dict["data"].size(0))
-                train_recon_loss.update(output_dict["recon_loss"].item(), feed_dict["data"].size(0))
-                train_perceptual_loss.update(output_dict["perceptual_loss"].item(), feed_dict["data"].size(0))
+                train_recon_loss.update(output_dict["recon_loss"], feed_dict["data"].size(0))
+                train_perceptual_loss.update(output_dict["perceptual_loss"], feed_dict["data"].size(0))
                 
                 # Log training metrics
-                self.write_metric(
-                    {
-                        "train/loss": output_dict["loss"].item(),
-                        "train/recon_loss": output_dict["recon_loss"].item(),
-                        "train/perceptual_loss": output_dict["perceptual_loss"].item(),
-                        "train/lr": self.optimizer.param_groups[0]["lr"],
-                        "train/epoch": epoch,
-                        "train/step": step + epoch * self.run_config.steps_per_epoch,
-                    },
-                    "train",
-                )
-                
+                if step % self.run_config.log_interval == 0:
+                    self.write_metric(
+                        {
+                            "train/loss": output_dict["loss"].item(),
+                            "train/recon_loss": output_dict["recon_loss"],
+                            "train/perceptual_loss": output_dict["perceptual_loss"],
+                            "train/lr": self.optimizer.param_groups[0]["lr"],
+                            "train/epoch": epoch,
+                            "train/step": step + epoch * self.run_config.steps_per_epoch,
+                        },
+                        "train",
+                    )
+                    
                 # Log images periodically
                 if step % self.run_config.log_interval == 0:
-                    self.log_images(
-                        feed_dict["data"], 
-                        output_dict["reconstructed"],
-                        prefix="train",
-                        step=step + epoch * self.run_config.steps_per_epoch
-                    )
+                        self.log_images(
+                            feed_dict["data"].cpu(), 
+                            output_dict["reconstructed"],
+                            prefix="train",
+                            step=step + epoch * self.run_config.steps_per_epoch
+                        )
                 
-                # Optimizer step
+                # Optimizer step and cleanup
                 self.after_step()
+                del output_dict["loss"]  # Free GPU tensor
                 
-                # Manually remove feed dict from gpu
+                # Move feed_dict to CPU and clear CUDA cache
                 if feed_dict is not None:
                     for key in feed_dict:
                         if isinstance(feed_dict[key], torch.Tensor):
                             feed_dict[key] = feed_dict[key].cpu()
+                torch.cuda.empty_cache()
                 
                 # Update progress bar
                 t.set_postfix({

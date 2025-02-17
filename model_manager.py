@@ -304,6 +304,11 @@ class ModelManager:
                 
             self.logger.info(f"Training experimental model: epochs={epochs}, steps={steps_per_epoch}")
             
+            # Move model to CPU before trainer initialization
+            self.experimental_model.cpu()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
             # Initialize trainer
             trainer = DCAETrainer(
                 path=self.save_dir,
@@ -311,30 +316,31 @@ class ModelManager:
                 data_provider=self.dataset_provider
             )
             
-            # Configure trainer logging
-            trainer.write_train_log = True  # Enable training step logging
-            trainer.write_val_log = True    # Enable validation step logging
-            trainer.log_interval = 50  # Set logging frequency
+            # Configure trainer
+            trainer.write_train_log = True
+            trainer.write_val_log = True
+            trainer.log_interval = 50
             run_config = self.create_run_config(self.config)
             run_config.steps_per_epoch = steps_per_epoch
             run_config.n_epochs = epochs
-            # Setup trainer with safe defaults
-            trainer.prep_for_training(
-                run_config=run_config,
-                ema_decay=None,  # EMA is handled by EfficientViT's trainer
-                amp=None  # AMP is handled by EfficientViT's trainer
-            )
-            self.logger.info("Trainer setup complete")
-            self.logger.info("Starting training...")
-
-            # Train the model
+            trainer.setup(run_config)
+            
+            # Train model
             trainer.train()
             
-            # Save visualizations
+            # Move model back to CPU and clear GPU memory
+            self.experimental_model.cpu()
+            del trainer
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
+            
+            # Get metrics after training
             metrics = self._get_model_metrics(self.experimental_model, save_reconstructions=True, step="after_training")
             self._save_weight_distribution(self.experimental_model, "after_training")
             
             return metrics
+            
         except Exception as e:
             self.logger.error(f"Error training experimental model: {str(e)}\n{traceback.format_exc()}")
             raise

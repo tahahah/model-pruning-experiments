@@ -14,33 +14,37 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-def analyze_weight_distribution(model):
+def analyze_weight_distribution(model, verbose: bool = False):
     """Analyze weight distribution and sparsity statistics"""
     total_params = 0
     total_nonzero = 0
     stats = []
     
-    for name, param in model.named_parameters():
-        if param.dim() > 1:  # Skip 1D tensors like biases
-            nonzero = torch.count_nonzero(param).item()
-            total = param.numel()
-            total_params += total
-            total_nonzero += nonzero
-            stats.append({
-                'Layer': name,
-                'Size': total,
-                'NonZero': nonzero,
-                'Sparsity(%)': (1 - nonzero/total)*100
-            })
+    with torch.no_grad():  # Disable gradient computation for efficiency
+        for name, param in model.named_parameters():
+            if param.dim() > 1:  # Skip 1D tensors like biases
+                nonzero = torch.count_nonzero(param).item()
+                total = param.numel()
+                total_params += total
+                total_nonzero += nonzero
+                if verbose:
+                    stats.append({
+                        'Layer': name,
+                        'Size': total,
+                        'NonZero': nonzero,
+                        'Sparsity(%)': (1 - nonzero/total)*100
+                    })
     
-    print("\nModel Sparsity Analysis:")
-    print(f"Total Parameters: {total_params:,}")
-    print(f"Non-zero Parameters: {total_nonzero:,} ({total_nonzero/total_params:.1%})")
-    print(f"Zero Parameters: {total_params - total_nonzero:,} ({1 - total_nonzero/total_params:.1%})")
+    if verbose:
+        print("\nModel Sparsity Analysis:")
+        print(f"Total Parameters: {total_params:,}")
+        print(f"Non-zero Parameters: {total_nonzero:,} ({total_nonzero/total_params:.1%})")
+        print(f"Zero Parameters: {total_params - total_nonzero:,} ({1 - total_nonzero/total_params:.1%})")
+        
+        df = pd.DataFrame(stats)
+        print("\nTop 10 Most Sparse Layers:")
+        print(df.sort_values('Sparsity(%)', ascending=False).head(10).to_string())
     
-    df = pd.DataFrame(stats)
-    print("\nTop 10 Most Sparse Layers:")
-    print(df.sort_values('Sparsity(%)', ascending=False).head(10).to_string())
     return total_params, total_nonzero
 
 def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
@@ -196,7 +200,7 @@ def main():
     
     # Analyze original model
     print("\nAnalyzing original model...")
-    orig_params, orig_nonzero = analyze_weight_distribution(model)
+    orig_params, orig_nonzero = analyze_weight_distribution(model, verbose=True)
     
     # Process images with different sparsity levels
     sparsity_levels = [0.0, 0.5, 0.7, 0.9]
