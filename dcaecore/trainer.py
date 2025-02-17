@@ -168,6 +168,11 @@ class DCAETrainer(Trainer):
                         'lpips': val_lpips.avg
                     })
                     t.update()
+                
+                    images.cpu()
+                    feed_dict["data"].cpu()
+                    del encoded
+                    del reconstructed
         
         metrics = {
             "val/loss": val_loss.avg,
@@ -203,12 +208,17 @@ class DCAETrainer(Trainer):
             total_loss = (self.run_config.reconstruction_weight * recon_loss + 
                          self.run_config.perceptual_weight * perceptual_loss)
             
-        return {
-            "loss": total_loss,
-            "recon_loss": recon_loss,
-            "perceptual_loss": perceptual_loss,
-            "reconstructed": reconstructed
+        result = {
+            "loss": total_loss.detach().cpu(),
+            "recon_loss": recon_loss.detach().cpu(),
+            "perceptual_loss": perceptual_loss.detach().cpu(),
+            "reconstructed": reconstructed.detach().cpu()
         }
+        
+        del images, encoded, reconstructed, images_norm, recon_norm
+        torch.cuda.empty_cache()
+        
+        return result
         
     def _train_one_epoch(self, epoch):
         train_loss = AverageMeter(is_distributed=False)
@@ -261,8 +271,8 @@ class DCAETrainer(Trainer):
                 # Manually remove feed dict from gpu
                 if feed_dict is not None:
                     for key in feed_dict:
-                    if isinstance(feed_dict[key], torch.Tensor):
-                        feed_dict[key] = feed_dict[key].cpu()
+                        if isinstance(feed_dict[key], torch.Tensor):
+                            feed_dict[key] = feed_dict[key].cpu()
                 
                 # Update progress bar
                 t.set_postfix({

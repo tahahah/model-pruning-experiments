@@ -252,9 +252,6 @@ class ModelManager:
                 
             self.logger.info(f"Pruning experimental model to {sparsity*100}% sparsity")
             
-            # Ensure experimental model is on device for pruning
-            self._ensure_model_on_device("experimental_model")
-            
             # Move model to CPU for pruning to avoid duplicate GPU memory usage
             self.experimental_model.cpu()
             if torch.cuda.is_available():
@@ -263,24 +260,26 @@ class ModelManager:
             # Prune the model (creates a new model instance)
             pruned_model = fine_grained_prune(self.experimental_model, sparsity)
             
-            # Clean up old model and update reference
+            # Clean up old model
             del self.experimental_model
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
+            # Update reference and mark as active
             self.experimental_model = pruned_model
-            self.active_model = "experimental_model"  # Mark as active since it will be moved to device
+            self.active_model = "experimental_model"
             
             # Move to device for metrics computation
             self.experimental_model.to(self.device)
             
             # Get metrics after pruning
             metrics = self._get_model_metrics(self.experimental_model, save_reconstructions=True, step="after_pruning")
-            
-            # Save visualizations
             self._save_weight_distribution(self.experimental_model, "after_pruning")
             
+            # Move back to CPU to free up memory
+            self.experimental_model.cpu()
             if torch.cuda.is_available():
+                torch.cuda.empty_cache()
                 self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
             
             return metrics

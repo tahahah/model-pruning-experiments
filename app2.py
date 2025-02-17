@@ -110,7 +110,10 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
     def prune_model(self, pruning_method: str, sparsity_ratio: float) -> Tuple[str, str, str]:
         """Prune the model using specified method and ratio"""
         try:
+            # Get metrics directly from pruning operation
             metrics = self.model_manager.prune_experimental_model(sparsity_ratio)
+            
+            # Format metrics text from the metrics we already have
             metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
 Parameter Count: {metrics.get('total_params', '0')}
 Sparsity: {metrics.get('sparsity_ratio', '0%')}
@@ -118,6 +121,7 @@ Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
 Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
 Inference Latency: {metrics.get('latency', '0 ms')}"""
 
+            # Use the reconstruction image that was already saved during pruning
             sample_image = os.path.join(self.model_manager.save_dir, "reconstruction_after_pruning.png")
             
             return (
@@ -389,4 +393,3 @@ if __name__ == "__main__":
         server_port=7860,
         share=True
     )
-
