@@ -48,6 +48,7 @@ class ModelManager:
         self.original_model = None
         self.equipped_model = None
         self.experimental_model = None
+        self.active_model = None  # Tracks which model is currently in VRAM
         self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).to(self.device)
         
         # Dataset
@@ -85,6 +86,25 @@ class ModelManager:
             self.sample_batch = next(itertools.islice(self.dataset_provider.valid, random_index, None))
             self.logger.info("Dataset provider setup complete")
 
+    def _ensure_model_on_device(self, model_name: str) -> None:
+        """Ensure the specified model is loaded on device, moving other models to CPU if needed"""
+        if self.active_model == model_name:
+            return
+            
+        # First move current active model to CPU if exists
+        if self.active_model is not None:
+            current_model = getattr(self, self.active_model)
+            if current_model is not None:
+                current_model.cpu()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        
+        # Now move requested model to device
+        target_model = getattr(self, model_name)
+        if target_model is not None:
+            target_model.to(self.device)
+            self.active_model = model_name
+            
     def load_initial_model(self, model_path_or_name: str) -> Dict[str, Any]:
         """
         Load initial model and set it as both original and equipped model.
@@ -114,13 +134,21 @@ class ModelManager:
             
             # Move model to device and set to eval mode
             self.logger.info(f"Moving model to device: {self.device}")
-            self.original_model = self.original_model.to(self.device)
+            self._ensure_model_on_device("original_model")
             self.original_model.eval()
             
-            # Set as equipped model
+            # Move original model to CPU before creating equipped copy
+            self.original_model.cpu()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Set as equipped model (creates copy on CPU)
             self.logger.info("Creating equipped model copy...")
             self.equipped_model = copy.deepcopy(self.original_model)
             self.equipped_model.eval()
+            
+            # Move equipped model to device and make it active
+            self._ensure_model_on_device("equipped_model")
             
             # Get initial metrics and save visualizations
             self.logger.info("Computing metrics and saving visualizations...")
@@ -159,9 +187,16 @@ class ModelManager:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             
+            # Ensure equipped model is on device for deepcopy
+            self._ensure_model_on_device("equipped_model")
+            
             # Create new experimental model
             self.experimental_model = copy.deepcopy(self.equipped_model)
             self.experimental_model.eval()
+            
+            # Move equipped model back to CPU and make experimental model active
+            self.equipped_model.cpu()
+            self.active_model = "experimental_model"
             
             if torch.cuda.is_available():
                 self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
@@ -291,16 +326,19 @@ class ModelManager:
             Dict containing updated model metrics
         """
         try:
-            if self.experimental_model is None:
-                raise ValueError("No experimental model to equip")
-                
-            self.logger.info("Equipping experimental model")
+            self.logger.info("Promoting experimental model to equipped status")
             
-            # Clear current equipped model
+            if self.experimental_model is None:
+                raise ValueError("No experimental model exists to equip")
+            
+            # Clear current equipped model if it exists
             if self.equipped_model is not None:
                 del self.equipped_model
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+            
+            # Ensure experimental model is on device
+            self._ensure_model_on_device("experimental_model")
             
             # Update equipped model
             self.equipped_model = copy.deepcopy(self.experimental_model)
@@ -311,6 +349,9 @@ class ModelManager:
             self.experimental_model = None
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            
+            # Make equipped model active
+            self.active_model = "equipped_model"
             
             # Save visualizations of newly equipped model
             metrics = self._get_model_metrics(self.equipped_model, save_reconstructions=True, step="equipped")
@@ -349,7 +390,7 @@ class ModelManager:
         except Exception as e:
             self.logger.error(f"Error calculating loss: {str(e)}\n{traceback.format_exc()}")
             raise
-    
+
     def _get_model_metrics(self, model: DCAE, save_reconstructions: bool = False, step: str = "") -> Dict[str, Any]:
         """Get model metrics including sparsity and reconstruction loss
         
@@ -364,6 +405,20 @@ class ModelManager:
         try:
             # Setup dataset if not already done
             self._setup_dataset_if_needed()
+            
+            # Find which model this is and ensure it's on device
+            model_name = None
+            if model is self.original_model:
+                model_name = "original_model"
+            elif model is self.equipped_model:
+                model_name = "equipped_model"
+            elif model is self.experimental_model:
+                model_name = "experimental_model"
+            
+            if model_name is None:
+                raise ValueError("_get_model_metrics called with untracked model")
+                
+            self._ensure_model_on_device(model_name)
             
             # Get model parameters and sparsity
             total_params, nonzero_params = analyze_weight_distribution(model)
@@ -400,7 +455,7 @@ class ModelManager:
             del images, latent, reconstructed
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            
+                
             return {
                 "total_params": f"{total_params:,} weights",
                 "nonzero_params": f"{nonzero_params:,} weights",
