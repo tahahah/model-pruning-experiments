@@ -17,12 +17,12 @@ class PacmanDatasetProviderConfig(BaseDataProviderConfig):
     val_dataset: str = "Tahahah/PacmanDataset_2"
     train_split: str = "train[:200]"  # Only get first 200 samples if not streaming
     val_split: str = "train[:200]"    # Only get first 200 samples if not streaming
-    image_size: int = 512
+    image_size: int = 256
     verification_mode: str = "no_checks"
     streaming: bool = False  # Set to True for original streaming behavior
     cache_dir: str = ".cache/pacman_dataset"  # Directory to store cached samples
-    batch_size: int = 16
-    n_worker: int = 4
+    batch_size: int = 4
+    n_worker: int = 2
     num_replicas: int = 1
     rank: int = 0
     val_steps: int = 100

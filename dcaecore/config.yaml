@@ -32,7 +32,7 @@ run_config:
   grad_clip: 1.0
   reset_bn: false
   reset_bn_size: 0
-  reset_bn_batch_size: 32
+  reset_bn_batch_size: 2
   eval_image_size: [512, 512]
 
 # Model Configuration

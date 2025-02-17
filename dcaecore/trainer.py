@@ -54,10 +54,15 @@ def log_gpu_memory(msg=""):
 class DCAETrainer(Trainer):
     def __init__(self, path: str, model: DCAE, data_provider):
         super().__init__(path, model, data_provider)
-        # Initialize metrics
-        self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True).cuda()
-        self.ssim = StructuralSimilarityIndexMeasure(data_range=(0.0, 255.0)).cuda()
+        # Initialize metrics (but keep on CPU initially)
+        self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True)
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=(0.0, 255.0))
         self.psnr_stats = PSNRStats(PSNRStatsConfig())
+        
+        # Convert to half precision to save memory
+        if torch.cuda.is_available():
+            self.lpips = self.lpips.half().cuda()
+            self.ssim = self.ssim.half().cuda()
         
         # Initialize best validation score
         self.best_val = float('inf')
@@ -65,6 +70,8 @@ class DCAETrainer(Trainer):
 
     def normalize_for_lpips(self, x):
         """Normalize tensor to [0,1] range for LPIPS"""
+        if x.dtype != self.lpips.dtype:
+            x = x.to(self.lpips.dtype)
         return (x.clamp(-1, 1) + 1) / 2
 
     def log_images(self, images, reconstructed, prefix="train", step=0):
@@ -201,24 +208,44 @@ class DCAETrainer(Trainer):
         images = feed_dict["data"]
         log_gpu_memory("Before forward pass")
         
-        with torch.amp.autocast(device_type='cuda') if self.enable_amp else nullcontext():
+        with torch.amp.autocast(device_type='cuda', dtype=torch.float16) if self.enable_amp else nullcontext():
             # Get the actual model from DDP wrapper if needed
             model = self.model.module if hasattr(self.model, 'module') else self.model
             
-            # Forward pass through DCAE
-            encoded = model.encode(images)
-            log_gpu_memory("After encode")
+            # Forward pass through DCAE in chunks if needed
+            batch_size = images.size(0)
+            if batch_size > 2 and torch.cuda.get_device_properties(0).total_memory < 4 * 1024**3:  # Less than 4GB
+                # Process in chunks of 2 to save memory
+                encoded_chunks = []
+                for i in range(0, batch_size, 2):
+                    chunk = images[i:i+2].cuda()
+                    with torch.no_grad():
+                        encoded_chunks.append(model.encode(chunk).cpu())
+                    del chunk
+                    torch.cuda.empty_cache()
+                encoded = torch.cat(encoded_chunks, dim=0).cuda()
+                del encoded_chunks
+            else:
+                encoded = model.encode(images)
             
+            # Decode
             reconstructed = model.decode(encoded)
+            del encoded
             log_gpu_memory("After decode")
+            
+            # Move images to same device and dtype as reconstructed
+            if images.device != reconstructed.device or images.dtype != reconstructed.dtype:
+                images = images.to(device=reconstructed.device, dtype=reconstructed.dtype)
             
             # Reconstruction loss (MSE)
             recon_loss = F.mse_loss(reconstructed, images)
             
-            # Normalize images for LPIPS
-            images_norm = self.normalize_for_lpips(images)
-            recon_norm = self.normalize_for_lpips(reconstructed)
-            perceptual_loss = self.lpips(images_norm, recon_norm)
+            # Compute LPIPS with memory optimization
+            with torch.cuda.amp.autocast():  # Use FP16 for LPIPS
+                images_norm = self.normalize_for_lpips(images)
+                recon_norm = self.normalize_for_lpips(reconstructed)
+                perceptual_loss = self.lpips(images_norm, recon_norm)
+                del images_norm, recon_norm
             log_gpu_memory("After LPIPS")
             
             # Total loss
@@ -229,10 +256,11 @@ class DCAETrainer(Trainer):
             "loss": total_loss,  # Keep on GPU for backward
             "recon_loss": recon_loss.detach().cpu(),
             "perceptual_loss": perceptual_loss.detach().cpu(),
-            "reconstructed": reconstructed.detach().cpu()
+            "reconstructed": reconstructed.detach().cpu() if self.run_config.log_interval > 0 else None
         }
         
-        del images, encoded, reconstructed, images_norm, recon_norm
+        # Cleanup
+        del images, reconstructed
         torch.cuda.empty_cache()
         log_gpu_memory("After cleanup")
         
