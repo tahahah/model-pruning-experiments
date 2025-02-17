@@ -258,6 +258,12 @@ class DCAETrainer(Trainer):
                 # Optimizer step
                 self.after_step()
                 
+                # Manually remove feed dict from gpu
+                if feed_dict is not None:
+                    for key in feed_dict:
+                    if isinstance(feed_dict[key], torch.Tensor):
+                        feed_dict[key] = feed_dict[key].cpu()
+                
                 # Update progress bar
                 t.set_postfix({
                     'loss': train_loss.avg,
