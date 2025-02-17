@@ -208,10 +208,13 @@ class DCAETrainer(Trainer):
         images = feed_dict["data"]
         log_gpu_memory("Before forward pass")
         
+        # Calculate and print memory occupied by images
+        image_memory = images.element_size() * images.nelement() / (1024 * 1024)  # Convert to MB
+        print(f"Memory occupied by images: {image_memory:.2f} MB")
+        
         with torch.amp.autocast(device_type='cuda', dtype=torch.float16) if self.enable_amp else nullcontext():
             # Get the actual model from DDP wrapper if needed
             model = self.model.module if hasattr(self.model, 'module') else self.model
-            
             # Forward pass through DCAE in chunks if needed
             batch_size = images.size(0)
             if batch_size > 2 and torch.cuda.get_device_properties(0).total_memory < 4 * 1024**3:  # Less than 4GB
