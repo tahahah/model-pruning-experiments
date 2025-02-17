@@ -53,23 +53,33 @@ def log_gpu_memory(msg=""):
 
 class DCAETrainer(Trainer):
     def __init__(self, path: str, model: DCAE, data_provider):
-        super().__init__(path, model, data_provider)
-        # Initialize metrics (but keep on CPU initially)
-        self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True)
-        self.ssim = StructuralSimilarityIndexMeasure(data_range=(0.0, 255.0))
+        # Initialize metrics on CPU first
+        self.lpips = None  # Lazy initialization
+        self.ssim = None   # Lazy initialization
         self.psnr_stats = PSNRStats(PSNRStatsConfig())
-        
-        # Convert to half precision to save memory
-        if torch.cuda.is_available():
-            self.lpips = self.lpips.half().cuda()
-            self.ssim = self.ssim.half().cuda()
         
         # Initialize best validation score
         self.best_val = float('inf')
+        
+        # Initialize parent class after our initialization
+        super().__init__(path, model, data_provider)
         log_gpu_memory("After trainer init")
+    
+    def _ensure_metrics_initialized(self):
+        """Lazy initialization of metrics to save memory"""
+        if self.lpips is None:
+            self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True)
+            if torch.cuda.is_available():
+                self.lpips = self.lpips.half().cuda()
+        
+        if self.ssim is None:
+            self.ssim = StructuralSimilarityIndexMeasure(data_range=(0.0, 255.0))
+            if torch.cuda.is_available():
+                self.ssim = self.ssim.half().cuda()
 
     def normalize_for_lpips(self, x):
         """Normalize tensor to [0,1] range for LPIPS"""
+        self._ensure_metrics_initialized()  # Lazy init
         if x.dtype != self.lpips.dtype:
             x = x.to(self.lpips.dtype)
         return (x.clamp(-1, 1) + 1) / 2

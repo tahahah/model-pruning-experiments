@@ -308,27 +308,30 @@ class ModelManager:
             self.experimental_model.cpu()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                self.logger.info(f"Initial VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
             
-            # Initialize trainer
+            # Configure run config first
+            run_config = self.create_run_config(self.config)
+            run_config.steps_per_epoch = steps_per_epoch
+            run_config.n_epochs = epochs
+            
+            # Initialize trainer with minimal logging
             trainer = DCAETrainer(
                 path=self.save_dir,
                 model=self.experimental_model,
                 data_provider=self.dataset_provider
             )
             
-            # Configure trainer
-            trainer.write_train_log = True
-            trainer.write_val_log = True
-            trainer.log_interval = 50
-            run_config = self.create_run_config(self.config)
-            run_config.steps_per_epoch = steps_per_epoch
-            run_config.n_epochs = epochs
+            # Configure trainer with minimal logging
+            trainer.write_train_log = False  # Reduce memory from logging
+            trainer.write_val_log = False
+            trainer.log_interval = 0  # Disable image logging during training
             
-            # Setup trainer with safe defaults
+            # Setup trainer with optimized defaults
             trainer.prep_for_training(
                 run_config=run_config,
-                ema_decay=None,  # EMA is handled by EfficientViT's trainer
-                amp=None  # AMP is handled by EfficientViT's trainer
+                ema_decay=None,
+                amp=True  # Enable AMP for memory efficiency
             )
             
             # Train model
@@ -339,7 +342,7 @@ class ModelManager:
             del trainer
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                self.logger.info(f"Current VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
+                self.logger.info(f"Final VRAM usage: {torch.cuda.memory_allocated() / 1024**2:.1f}MB")
             
             # Get metrics after training
             metrics = self._get_model_metrics(self.experimental_model, save_reconstructions=True, step="after_training")
