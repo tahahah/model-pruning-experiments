@@ -40,6 +40,17 @@ class DCAERunConfig(RunConfig):
         self.log_interval = log_interval
         self.steps_per_epoch = steps_per_epoch
 
+def log_gpu_memory(msg=""):
+    """Log GPU memory usage"""
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**2
+        reserved = torch.cuda.memory_reserved() / 1024**2
+        max_allocated = torch.cuda.max_memory_allocated() / 1024**2
+        print(f"\n[GPU Memory] {msg}")
+        print(f"  Allocated: {allocated:.1f}MB")
+        print(f"  Reserved:  {reserved:.1f}MB")
+        print(f"  Peak:      {max_allocated:.1f}MB")
+
 class DCAETrainer(Trainer):
     def __init__(self, path: str, model: DCAE, data_provider):
         super().__init__(path, model, data_provider)
@@ -50,7 +61,8 @@ class DCAETrainer(Trainer):
         
         # Initialize best validation score
         self.best_val = float('inf')
-        
+        log_gpu_memory("After trainer init")
+
     def normalize_for_lpips(self, x):
         """Normalize tensor to [0,1] range for LPIPS"""
         return (x.clamp(-1, 1) + 1) / 2
@@ -187,6 +199,7 @@ class DCAETrainer(Trainer):
         
     def run_step(self, feed_dict):
         images = feed_dict["data"]
+        log_gpu_memory("Before forward pass")
         
         with torch.amp.autocast(device_type='cuda') if self.enable_amp else nullcontext():
             # Get the actual model from DDP wrapper if needed
@@ -194,7 +207,10 @@ class DCAETrainer(Trainer):
             
             # Forward pass through DCAE
             encoded = model.encode(images)
+            log_gpu_memory("After encode")
+            
             reconstructed = model.decode(encoded)
+            log_gpu_memory("After decode")
             
             # Reconstruction loss (MSE)
             recon_loss = F.mse_loss(reconstructed, images)
@@ -203,6 +219,7 @@ class DCAETrainer(Trainer):
             images_norm = self.normalize_for_lpips(images)
             recon_norm = self.normalize_for_lpips(reconstructed)
             perceptual_loss = self.lpips(images_norm, recon_norm)
+            log_gpu_memory("After LPIPS")
             
             # Total loss
             total_loss = (self.run_config.reconstruction_weight * recon_loss + 
@@ -217,6 +234,7 @@ class DCAETrainer(Trainer):
         
         del images, encoded, reconstructed, images_norm, recon_norm
         torch.cuda.empty_cache()
+        log_gpu_memory("After cleanup")
         
         return result
         
@@ -230,21 +248,23 @@ class DCAETrainer(Trainer):
                 if step >= self.run_config.steps_per_epoch:
                     break
                     
+                log_gpu_memory(f"Start of step {step}")
                 feed_dict = self.before_step(feed_dict)
                 self.optimizer.zero_grad()
                 
-                # Run training step
                 output_dict = self.run_step(feed_dict)
+                log_gpu_memory(f"After run_step {step}")
                 
                 # Scale loss and backward
                 self.scaler.scale(output_dict["loss"]).backward()
+                log_gpu_memory(f"After backward {step}")
                 
-                # Update metrics (using CPU tensors)
+                # Update metrics
                 train_loss.update(output_dict["loss"].item(), feed_dict["data"].size(0))
                 train_recon_loss.update(output_dict["recon_loss"], feed_dict["data"].size(0))
                 train_perceptual_loss.update(output_dict["perceptual_loss"], feed_dict["data"].size(0))
                 
-                # Log training metrics
+                # Log training metrics and images
                 if step % self.run_config.log_interval == 0:
                     self.write_metric(
                         {
@@ -258,16 +278,14 @@ class DCAETrainer(Trainer):
                         "train",
                     )
                     
-                # Log images periodically
-                if step % self.run_config.log_interval == 0:
-                        self.log_images(
-                            feed_dict["data"].cpu(), 
-                            output_dict["reconstructed"],
-                            prefix="train",
-                            step=step + epoch * self.run_config.steps_per_epoch
-                        )
+                    self.log_images(
+                        feed_dict["data"].cpu(), 
+                        output_dict["reconstructed"],
+                        prefix="train",
+                        step=step + epoch * self.run_config.steps_per_epoch
+                    )
                 
-                # Optimizer step and cleanup
+                # Optimizer step
                 self.after_step()
                 del output_dict["loss"]  # Free GPU tensor
                 
@@ -277,6 +295,7 @@ class DCAETrainer(Trainer):
                         if isinstance(feed_dict[key], torch.Tensor):
                             feed_dict[key] = feed_dict[key].cpu()
                 torch.cuda.empty_cache()
+                log_gpu_memory(f"End of step {step}")
                 
                 # Update progress bar
                 t.set_postfix({
