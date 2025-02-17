@@ -46,10 +46,10 @@ def log_gpu_memory(msg=""):
         allocated = torch.cuda.memory_allocated() / 1024**2
         reserved = torch.cuda.memory_reserved() / 1024**2
         max_allocated = torch.cuda.max_memory_allocated() / 1024**2
-        print(f"\n[GPU Memory] {msg}")
-        print(f"  Allocated: {allocated:.1f}MB")
-        print(f"  Reserved:  {reserved:.1f}MB")
-        print(f"  Peak:      {max_allocated:.1f}MB")
+        logging.warning(f"\n[GPU Memory] {msg}")
+        logging.warning(f"  Allocated: {allocated:.1f}MB")
+        logging.warning(f"  Reserved:  {reserved:.1f}MB")
+        logging.warning(f"  Peak:      {max_allocated:.1f}MB")
 
 class DCAETrainer(Trainer):
     def __init__(self, path: str, model: DCAE, data_provider):
@@ -203,14 +203,14 @@ class DCAETrainer(Trainer):
         }
         
         return metrics
-        
+
     def run_step(self, feed_dict):
         images = feed_dict["data"]
         log_gpu_memory("Before forward pass")
         
         # Calculate and print memory occupied by images
         image_memory = images.element_size() * images.nelement() / (1024 * 1024)  # Convert to MB
-        print(f"Memory occupied by images: {image_memory:.2f} MB")
+        logging.warning(f"Memory occupied by images: {image_memory:.2f} MB")
         
         with torch.amp.autocast(device_type='cuda', dtype=torch.float16) if self.enable_amp else nullcontext():
             # Get the actual model from DDP wrapper if needed
