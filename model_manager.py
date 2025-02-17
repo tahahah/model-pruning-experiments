@@ -323,7 +323,13 @@ class ModelManager:
             run_config = self.create_run_config(self.config)
             run_config.steps_per_epoch = steps_per_epoch
             run_config.n_epochs = epochs
-            trainer.setup(run_config)
+            
+            # Setup trainer with safe defaults
+            trainer.prep_for_training(
+                run_config=run_config,
+                ema_decay=None,  # EMA is handled by EfficientViT's trainer
+                amp=None  # AMP is handled by EfficientViT's trainer
+            )
             
             # Train model
             trainer.train()
