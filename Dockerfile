@@ -24,4 +24,4 @@ RUN uv pip install --system -r requirements.txt
 RUN mkdir -p output
 
 # We'll mount the code as a volume instead of copying it
-CMD ["python", "app.py"]
+CMD ["python", "app2.py"]
