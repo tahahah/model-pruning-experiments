@@ -45,27 +45,28 @@ def analyze_weight_distribution(model):
 
 def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
     """Prune model weights using magnitude-based pruning and freeze pruned weights"""
-    # Create copy of original model
+    # Create copy of original model (model should be on CPU when passed in)
+    if next(model.parameters()).is_cuda:
+        raise ValueError("Model must be on CPU before pruning to avoid memory issues")
+        
     pruned_model = deepcopy(model)
     
     # Iterate through all model parameters
     for name, module in pruned_model.named_modules():
         if isinstance(module, (nn.Linear, nn.Conv2d)):
-            # Process each layer separately to avoid memory issues
+            # Get weight tensor (should be on CPU)
             tensor = module.weight.data
+            tensor_cpu = tensor.numpy().flatten()
             
-            # Convert to CPU for memory-efficient calculation
-            tensor_cpu = tensor.cpu().numpy().flatten()
-            
-            # Calculate threshold using numpy's percentile with limited memory
+            # Calculate threshold using numpy's percentile
             threshold = np.percentile(
                 np.abs(tensor_cpu), 
                 sparsity * 100,
                 method='lower'
             )
             
-            # Create mask on GPU if available
-            mask = torch.tensor(np.abs(tensor_cpu) > threshold, device=tensor.device)
+            # Create mask on CPU
+            mask = torch.tensor(np.abs(tensor_cpu) > threshold)
             mask = mask.reshape(tensor.shape)
             
             # Apply mask and store it as a buffer (persistent)
@@ -80,9 +81,7 @@ def fine_grained_prune(model: nn.Module, sparsity: float) -> nn.Module:
             
             # Clean up temporary variables
             del tensor_cpu, mask
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-    
+            
     return pruned_model
 
 def plot_weight_distributions(model, output_dir, sparsity):
@@ -213,7 +212,7 @@ def main():
         f.write("## Weight Distribution Analysis\n\n")
         for sparsity in sparsity_levels:
             print(f"\nAnalyzing weight distributions at sparsity {sparsity:.1f}")
-            current_model = model if sparsity == 0.0 else fine_grained_prune(model, sparsity)
+            current_model = model if sparsity == 0.0 else fine_grained_prune(model.cpu(), sparsity)
             current_model = current_model.to(device)
             
             # Plot and save weight distributions
@@ -240,7 +239,7 @@ def main():
                 if sparsity == 0.0:
                     current_model = model
                 else:
-                    current_model = fine_grained_prune(model, sparsity)
+                    current_model = fine_grained_prune(model.cpu(), sparsity)
                     current_model = current_model.to(device)
                 
                 # Process image
