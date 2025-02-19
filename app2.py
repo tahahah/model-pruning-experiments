@@ -13,14 +13,24 @@ class ModelPruningUI:
     def __init__(self, config_path: str = "dcaecore/config.yaml", save_dir: str = "outputs"):
         self.model_manager = ModelManager(config_path, save_dir)
         
-    def load_model(self, model_path: str) -> Tuple[str, str, str, str]:
-        """Load a model and return its metrics and visualizations"""
+    def load_model(self, model_path: str) -> Tuple[str, str, str, str, str, str, str]:
+        """Load a model and return its metrics and visualizations for both initial and equipped tabs"""
         try:
+            # Load model and get initial metrics
             metrics = self.model_manager.load_initial_model(model_path)
             
-            # Format metrics text
+            # Format metrics text for initial model
             metrics_text = f"""VRAM Usage: {metrics.get('vram_usage', 'N/A')}
 Parameters: {metrics.get('total_params', '0')}
+Sparsity: {metrics.get('sparsity_ratio', '0%')}
+Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
+Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
+Inference Latency: {metrics.get('latency', '0 ms')}"""
+
+            # Format metrics text for equipped model (same as initial)
+            equipped_metrics_text = f"""VRAM: {metrics.get('vram_usage', 'N/A')}
+Parameter Count: {metrics.get('total_params', '0')}
+Nonzero Parameters: {metrics.get('nonzero_params', '0')}
 Sparsity: {metrics.get('sparsity_ratio', '0%')}
 Reconstruction Loss: {metrics.get('reconstruction_loss', '0 MSE')}
 Perceptual Loss: {metrics.get('perceptual_loss', '0 LPIPS')}
@@ -30,16 +40,21 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
             weight_plot = os.path.join(self.model_manager.save_dir, "weight_dist_initial.png")
             sample_image = os.path.join(self.model_manager.save_dir, "sample_image_initial.png")
             reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_initial.png")
+            equipped_sample = os.path.join(self.model_manager.save_dir, "reconstruction_equipped.png")
+            equipped_reconstructed = os.path.join(self.model_manager.save_dir, "reconstruction_equipped.png")
             
             return (
-                metrics_text,
+                metrics_text,  # Initial model metrics
                 weight_plot if os.path.exists(weight_plot) else None,
                 sample_image if os.path.exists(sample_image) else None,
-                reconstructed if os.path.exists(reconstructed) else None
+                reconstructed if os.path.exists(reconstructed) else None,
+                equipped_metrics_text,  # Equipped model metrics
+                equipped_sample if os.path.exists(equipped_sample) else None,
+                equipped_reconstructed if os.path.exists(equipped_reconstructed) else None
             )
         except Exception as e:
             logger.error(f"Error loading model: {str(e)}")
-            return f"Error loading model: {str(e)}", None, None, None
+            return f"Error loading model: {str(e)}", None, None, None, None, None, None
             
     def validate_model(self) -> str:
         """Run validation on currently loaded model"""
@@ -249,8 +264,8 @@ def create_interface() -> gr.Blocks:
                             gr.Markdown("### Prune")
                             pruning_method = gr.Dropdown(
                                 choices=["magnitude", "random"],
-                                label="Pruning Method",
-                                value="magnitude"
+                                value="magnitude",
+                                label="Pruning Method"
                             )
                             sparsity_ratio = gr.Slider(
                                 minimum=0.0,
@@ -258,9 +273,7 @@ def create_interface() -> gr.Blocks:
                                 value=0.5,
                                 label="Sparsity Ratio"
                             )
-                            prune_btn = gr.Button("Prune")
-                        
-                        
+                            prune_btn = gr.Button("Prune", variant="primary")
                     
                     # Experimental Model Column
                     with gr.Column():
@@ -308,10 +321,13 @@ def create_interface() -> gr.Blocks:
             fn=ui.load_model,
             inputs=[model_path],
             outputs=[
-                metrics_text,
-                weight_plot,
-                sample_image,
-                reconstructed
+                metrics_text,      # Initial model metrics
+                weight_plot,       # Initial model weight distribution
+                sample_image,      # Initial model sample
+                reconstructed,     # Initial model reconstruction
+                equipped_metrics,  # Equipped model metrics
+                equipped_sample,   # Equipped model sample
+                equipped_reconstructed  # Equipped model reconstruction
             ]
         )
         
