@@ -13,6 +13,7 @@ from tqdm import tqdm
 import torchvision
 from contextlib import nullcontext
 import logging
+import torch_pruning as tp
 
 try:
     import wandb

@@ -19,7 +19,6 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
 sys.path.append(ROOT_DIR)
-import torch_pruning as tp
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
 from trainer import DCAERunConfig
