@@ -398,7 +398,7 @@ class VAEPruningTrainer(Trainer):
             
             # Run validation if needed
             if (epoch + 1) % self.run_config.eval_interval == 0:
-                val_info = self._validate(self.model, self.data_provider.val, epoch=epoch)
+                val_info = self._validate(self.model, self.data_provider.valid, epoch=epoch)
             
                 # Save best model
                 if val_info["val/loss"] < self.best_val:
