@@ -8,7 +8,7 @@ data_provider:
   val_split: "train[:200]"    # Only get first 200 samples if not streaming
   image_size: 512
   verification_mode: "no_checks"
-  streaming: false  # Set to True for original streaming behavior
+  streaming: true  # Set to True for original streaming behavior
   batch_size: 8  # Increased from 1 for more stable gradients
   num_workers: 2
   val_steps: 100  # Number of validation steps
