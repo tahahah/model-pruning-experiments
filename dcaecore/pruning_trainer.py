@@ -383,7 +383,7 @@ class VAEPruningTrainer(Trainer):
             importance=tp.importance.TaylorImportance(),  # Taylor expansion for better importance estimation
             pruning_ratio=0.2,  # Start with a more conservative ratio
             ignored_layers=ignored_layers,
-            global_pruning=False,  # Disable global pruning for more stable results
+            global_pruning=True,  # Enable global pruning to avoid scope issues
             isomorphic=True,      # Keep network structure balanced
             iterative_steps=self.run_config.n_epochs,   # More gradual pruning steps
             round_to=8,
