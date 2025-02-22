@@ -25,10 +25,10 @@ class DCAERunConfig(RunConfig):
     def __init__(self, 
                  reconstruction_weight: float = 1.0,
                  perceptual_weight: float = 0.1,
-                 save_interval: int = 5,
+                 save_interval: int = 1,
                  eval_interval: int = 1,
                  log_interval: int = 100,
-                 steps_per_epoch: int = 100,
+                 steps_per_epoch: int = 1000,
                  **kwargs):
         super().__init__(**kwargs)
         # Model specific parameters

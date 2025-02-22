@@ -21,8 +21,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
 sys.path.append(ROOT_DIR)
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
-from trainer import DCAERunConfig
-from pruning_trainer import VAEPruningTrainer
+from pruning_trainer import VAEPruningTrainer, DCAERunConfig
 from diffusers import AutoencoderTiny
 from pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 
