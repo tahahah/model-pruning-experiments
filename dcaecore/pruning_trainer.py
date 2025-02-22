@@ -370,13 +370,13 @@ class VAEPruningTrainer(Trainer):
             round_to=8, # It's recommended to round dims/channels to 4x or 8x for acceleration. Please see: https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
         )
         
-        macs, nparams = tp.utils.count_ops_and_params(model, example_inputs)
+        macs, nparams = tp.utils.count_ops_and_params(self.model, example_inputs)
         print(f"Before Pruning/training: MACs: {base_macs/1e9} G -> {macs/1e9} G, #Params: {base_nparams/1e6} M -> {nparams/1e6} M")
 
         for epoch in range(self.start_epoch, self.run_config.n_epochs):
             self.pruner.step()
             
-            macs, nparams = tp.utils.count_ops_and_params(model, example_inputs)
+            macs, nparams = tp.utils.count_ops_and_params(self.model, example_inputs)
             print(f"MACs: {base_macs/1e9} G -> {macs/1e9} G, #Params: {base_nparams/1e6} M -> {nparams/1e6} M")
             
             train_info = self.train_one_epoch(epoch)
