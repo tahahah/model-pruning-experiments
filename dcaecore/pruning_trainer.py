@@ -382,10 +382,6 @@ class VAEPruningTrainer(Trainer):
             torch.randn((1, 3, 512, 512)),
             importance=tp.importance.TaylorImportance(),  # Taylor expansion for better importance estimation
             pruning_ratio=0.2,  # Start with a more conservative ratio
-            pruning_ratio_dict={  # Layer-specific pruning ratios
-                'encoder': 0.3,   # Encoder can be pruned more
-                'decoder': 0.1    # Be more conservative with decoder
-            },
             ignored_layers=ignored_layers,
             global_pruning=False,  # Disable global pruning for more stable results
             isomorphic=True,      # Keep network structure balanced
