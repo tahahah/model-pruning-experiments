@@ -9,16 +9,16 @@ data_provider:
   image_size: 512
   verification_mode: "no_checks"
   streaming: true  # Set to True for original streaming behavior
-  batch_size: 1
+  batch_size: 8  # Increased from 1 for more stable gradients
   num_workers: 2
   val_steps: 100  # Number of validation steps
 
 # Training Configuration
 run_config:
-  n_epochs: 10
+  n_epochs: 20  # Increased to give more training time
   steps_per_epoch: 1000  # Number of training steps per epoch
-  init_lr: 1.0e-4
-  warmup_epochs: 5
+  init_lr: 5.0e-5  # Reduced learning rate for stability
+  warmup_epochs: 2  # Reduced warmup period
   warmup_lr: 1.0e-6
   lr_schedule_name: "cosine"
   lr_schedule_param:
@@ -38,7 +38,7 @@ run_config:
 # Model Configuration
 model:
   reconstruction_weight: 1.0
-  perceptual_weight: 0.1
+  perceptual_weight: 0.01  # Reduced to prioritize reconstruction early in training
 
 # Logging Configuration
 logging:
