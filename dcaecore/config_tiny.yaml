@@ -37,8 +37,8 @@ run_config:
 
 # Model Configuration
 model:
-  reconstruction_weight: 0.8
-  perceptual_weight: 0.4  # Reduced to prioritize reconstruction early in training
+  reconstruction_weight: 1
+  perceptual_weight: 0.3  # Reduced to prioritize reconstruction early in training
 
 # Logging Configuration
 logging:

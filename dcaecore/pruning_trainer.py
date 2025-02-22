@@ -391,10 +391,6 @@ class VAEPruningTrainer(Trainer):
         
         for epoch in range(self.start_epoch, self.run_config.n_epochs):
             train_info = self.train_one_epoch(epoch)
-            self.pruner.step()
-            
-            macs, nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
-            print(f"MACs: {base_macs/1e9} G -> {macs/1e9} G, #Params: {base_nparams/1e6} M -> {nparams/1e6} M")
             
             
             # Run validation if needed
@@ -406,6 +402,16 @@ class VAEPruningTrainer(Trainer):
                     self.best_val = val_info["val/loss"]
                     self.save_model(epoch=epoch, model_name="best.pt")
             
+            self.pruner.step()
+            
+            macs, nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
+            print(f"MACs: {base_macs/1e9} G -> {macs/1e9} G, #Params: {base_nparams/1e6} M -> {nparams/1e6} M")
+            self.after_step()
+            write_metric({
+                "MAC (G)": macs/1e9,
+                "nparams (M)": nparams/1e6,
+            })
+
             # Regular checkpoint
             if (epoch + 1) % self.run_config.save_interval == 0:
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
