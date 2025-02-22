@@ -372,22 +372,27 @@ class VAEPruningTrainer(Trainer):
         for m in self.model.modules():
             if isinstance(m, torch.nn.Linear):  # Protect bottleneck layers
                 ignored_layers.append(m)
-        # Initialize pruner with conservative settings
+            # Also protect batch norm layers as they're important for VAE stability
+            if isinstance(m, (torch.nn.BatchNorm2d, torch.nn.GroupNorm)):
+                ignored_layers.append(m)
+                
+        # Initialize pruner with better settings
         self.pruner = tp.pruner.GroupNormPruner(
             self.model,
             torch.randn((1, 3, 512, 512)),
-            importance=tp.importance.GroupNormImportance(p=2),
-            pruning_ratio=0.5, # remove 50% channels, ResNet18 = {64, 128, 256, 512} => ResNet18_Half = {32, 64, 128, 256}
-            # pruning_ratio_dict = {model.conv1: 0.2, model.layer2: 0.8}, # customized pruning ratios for layers or blocks
+            importance=tp.importance.TaylorImportance(),  # Taylor expansion for better importance estimation
+            pruning_ratio=0.2,  # Start with a more conservative ratio
+            pruning_ratio_dict={  # Layer-specific pruning ratios
+                'encoder': 0.3,   # Encoder can be pruned more
+                'decoder': 0.1    # Be more conservative with decoder
+            },
             ignored_layers=ignored_layers,
-            global_pruning=True,
-            isomorphic=True,
-            iterative_steps=self.run_config.n_epochs,
-            round_to=8, # It's recommended to round dims/channels to 4x or 8x for acceleration. Please see: https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
+            global_pruning=False,  # Disable global pruning for more stable results
+            isomorphic=True,      # Keep network structure balanced
+            iterative_steps=self.run_config.n_epochs,   # More gradual pruning steps
+            round_to=8,
         )
         
-        
-
         for epoch in range(self.start_epoch, self.run_config.n_epochs):
             self.pruner.step()
             
