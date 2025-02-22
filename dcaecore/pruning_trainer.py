@@ -390,12 +390,12 @@ class VAEPruningTrainer(Trainer):
         )
         
         for epoch in range(self.start_epoch, self.run_config.n_epochs):
+            train_info = self.train_one_epoch(epoch)
             self.pruner.step()
             
             macs, nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
             print(f"MACs: {base_macs/1e9} G -> {macs/1e9} G, #Params: {base_nparams/1e6} M -> {nparams/1e6} M")
             
-            train_info = self.train_one_epoch(epoch)
             
             # Run validation if needed
             if (epoch + 1) % self.run_config.eval_interval == 0:
