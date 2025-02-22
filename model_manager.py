@@ -660,8 +660,8 @@ class AutoencoderTinyWrapper(nn.Module):
     def parameters(self):
         return self.model.parameters()
         
-    def named_parameters(self):
-        return self.model.named_parameters()
+    def named_parameters(self, prefix: str = '', recurse: bool = True):
+        return self.model.named_parameters(prefix=prefix, recurse=recurse)
         
     def buffers(self):
         return self.model.buffers()
