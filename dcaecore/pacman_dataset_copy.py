@@ -32,18 +32,28 @@ class StreamingPacmanDataset(IterableDataset):
     def __init__(self, cfg: PacmanDatasetProviderConfig, dataset_name: str, split: str):
         super().__init__()
         self.cfg = cfg
-        # Remove [:200] from split if present when streaming
-        split = split.split("[")[0] if "[" in split else split
+        self.split = split
+        
+        # Parse sample limit from split string if present (e.g., "train[:1000]" -> 1000)
+        self.sample_limit = None
+        if "[:" in split:
+            try:
+                self.sample_limit = int(split.split("[:")[-1].rstrip("]"))
+            except ValueError:
+                print(f"Warning: Could not parse sample limit from split: {split}")
+        
+        # Remove sample limit from split for dataset loading
+        clean_split = split.split("[")[0] if "[" in split else split
         self.dataset = load_dataset(
             dataset_name,
-            split=split,
+            split=clean_split,
             streaming=True,
             verification_mode=cfg.verification_mode
         )
         
-        # Take only first 200 samples if specified in split
-        if "[:200]" in cfg.train_split:
-            self.dataset = self.dataset.take(200)
+        # Only take limited samples if not streaming
+        if not self.cfg.streaming and self.sample_limit is not None:
+            self.dataset = self.dataset.take(self.sample_limit)
             
         self.transform = self.build_transform()
         self._iterator = None
@@ -68,7 +78,11 @@ class StreamingPacmanDataset(IterableDataset):
             return {"data": torch.zeros(3, self.cfg.image_size, self.cfg.image_size)}
 
     def __len__(self): 
-        return 200 if "[:200]" in self.cfg.train_split else 100  # Return actual size for subset
+        if self.cfg.streaming:
+            # For streaming datasets, use steps_per_epoch from run_config
+            return self.cfg.val_steps * self.cfg.batch_size
+        # For non-streaming, return parsed limit or default
+        return self.sample_limit if self.sample_limit is not None else 100
 
     def build_transform(self):
         return transforms.Compose([
@@ -83,16 +97,26 @@ class CachedPacmanDataset(Dataset):
         super().__init__()
         self.cfg = cfg
         self.dataset_name = dataset_name
-        self.split = split.split("[")[0] if "[" in split else split
-        self.num_samples = 200 if "[:200]" in split else None
-        self.transform = self.build_transform()
+        self.split = split
+        
+        # Parse sample limit from split string if present (e.g., "train[:1000]" -> 1000)
+        self.sample_limit = None
+        if "[:" in split:
+            try:
+                self.sample_limit = int(split.split("[:")[-1].rstrip("]"))
+            except ValueError:
+                print(f"Warning: Could not parse sample limit from split: {split}")
+        
+        # Remove sample limit from split for dataset loading
+        clean_split = split.split("[")[0] if "[" in split else split
+        self.num_samples = self.sample_limit
         
         # Create cache directory if it doesn't exist
         self.cache_dir = Path(self.cfg.cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # Cache file is specific to dataset and split
-        self.cache_file = self.cache_dir / f"{dataset_name.replace('/', '_')}_{self.split}_{self.num_samples}.pkl"
+        self.cache_file = self.cache_dir / f"{dataset_name.replace('/', '_')}_{clean_split}_{self.num_samples}.pkl"
         
         # Load or create cache
         self.samples = self._load_or_create_cache()
