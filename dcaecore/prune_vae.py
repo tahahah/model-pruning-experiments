@@ -7,7 +7,9 @@ import random
 import numpy as np
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
 
+load_dotenv()
 # Try importing wandb
 try:
     import wandb
