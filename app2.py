@@ -189,7 +189,7 @@ def create_interface() -> gr.Blocks:
                             model_path = gr.Textbox(
                                 label="Model path or HF name",
                                 placeholder="Enter local path or HuggingFace model name",
-                                value="mit-han-lab/dc-ae-f32c32-in-1.0"
+                                value="tiny:madebyollin/taesd"
                             )
                         with gr.Column(scale=1):
                             load_btn = gr.Button(
@@ -243,7 +243,8 @@ def create_interface() -> gr.Blocks:
                         )
                         with gr.Row():
                             equipped_validate = gr.Button("Validate")
-                            save_hf = gr.Button("Save to HuggingFace", variant="secondary")
+                            save
+                             = gr.Button("Save to HuggingFace", variant="secondary")
                         
                         save_status = gr.Textbox(
                             label="Save Status",

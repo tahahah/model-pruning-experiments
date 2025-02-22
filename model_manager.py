@@ -23,6 +23,7 @@ from vae_pruning_analysis import fine_grained_prune, analyze_weight_distribution
 import huggingface_hub
 from dotenv import load_dotenv
 import time
+from diffusers import AutoencoderTiny
 
 class ModelManager:
     """
@@ -110,7 +111,8 @@ class ModelManager:
         Load initial model and set it as both original and equipped model.
         
         Args:
-            model_path_or_name: Path to model or HuggingFace model name
+            model_path_or_name: Path to model or HuggingFace model name. For AutoencoderTiny,
+                              use format "tiny:<model_name>" e.g. "tiny:madebyollin/taesd"
             
         Returns:
             Dict containing model metrics
@@ -130,7 +132,14 @@ class ModelManager:
             
             # Initialize model
             self.logger.info("Initializing model...")
-            self.original_model = DCAE_HF.from_pretrained(model_path_or_name)
+            if model_path_or_name.startswith("tiny:"):
+                # Load AutoencoderTiny model
+                model_name = model_path_or_name[5:]  # Remove "tiny:" prefix
+                base_model = AutoencoderTiny.from_pretrained(model_name)
+                self.original_model = AutoencoderTinyWrapper(base_model)
+            else:
+                # Load DCAE model
+                self.original_model = DCAE_HF.from_pretrained(model_path_or_name)
             
             # Move model to device and set to eval mode
             self.logger.info(f"Moving model to device: {self.device}")
@@ -619,3 +628,40 @@ class ModelManager:
         except Exception as e:
             self.logger.error(f"Failed to upload checkpoint to HuggingFace: {str(e)}\n{traceback.format_exc()}")
             return False
+
+class AutoencoderTinyWrapper(nn.Module):
+    """Wrapper for AutoencoderTiny to make it compatible with our interface"""
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        
+    def encode(self, x):
+        return self.model.encoder(x)
+        
+    def decode(self, x):
+        return self.model.decoder(x).clamp(0, 1)
+        
+    def forward(self, x):
+        latent = self.encode(x)
+        return self.decode(latent)
+        
+    def to(self, device):
+        self.model.to(device)
+        return self
+        
+    def cpu(self):
+        self.model.cpu()
+        return self
+        
+    def eval(self):
+        self.model.eval()
+        return self
+        
+    def parameters(self):
+        return self.model.parameters()
+        
+    def named_parameters(self):
+        return self.model.named_parameters()
+        
+    def buffers(self):
+        return self.model.buffers()
