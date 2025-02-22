@@ -24,4 +24,5 @@ RUN uv pip install --system -r requirements.txt
 RUN mkdir -p output
 
 # We'll mount the code as a volume instead of copying it
-CMD ["python", "app2.py"]
+# CMD ["python", "app2.py"]
+CMD ["python", "dcaecore/prune_vae.py", "--config", "dcaecore/config_tiny.yaml", "--output_dir", "dcaecore/TAESD_outputs", "--gpu", "0"]
