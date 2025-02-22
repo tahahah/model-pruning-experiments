@@ -112,7 +112,10 @@ def create_run_config(config: dict) -> DCAERunConfig:
         
         # DCAE specific parameters
         reconstruction_weight=model_cfg.get('reconstruction_weight', 1.0),
-        perceptual_weight=model_cfg.get('perceptual_weight', 0.1)
+        perceptual_weight=model_cfg.get('perceptual_weight', 0.1),
+        
+        # Training steps configuration
+        steps_per_epoch=run_cfg.get('steps_per_epoch', 1000)  # Get from config or default to 1000
     )
     
     return run_config
