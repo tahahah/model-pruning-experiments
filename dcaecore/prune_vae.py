@@ -224,7 +224,7 @@ def main():
     logger.info(f"Created data provider with batch size {data_cfg.batch_size}")
     
     # Load pretrained model
-    logger.info(f"Loading pretrained model from {"madebyollin/taesd"}")
+    logger.info(f"Loading pretrained model from {'madebyollin/taesd'}")
     model = AutoencoderTinyWrapper.from_pretrained("madebyollin/taesd")
     
     # Create run config
