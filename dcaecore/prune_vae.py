@@ -19,13 +19,13 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
 sys.path.append(ROOT_DIR)
-
+import torch_pruning as tp
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
-from dcaecore.trainer import DCAERunConfig
-from dcaecore.pruning_trainer import VAEPruningTrainer
+from trainer import DCAERunConfig
+from pruning_trainer import VAEPruningTrainer
 from diffusers import AutoencoderTiny
-from dcaecore.pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
+from pacman_dataset_copy import SimplePacmanDatasetProvider, PacmanDatasetProviderConfig
 
 class AutoencoderTinyWrapper(AutoencoderTiny):
     """Wrapper for AutoencoderTiny to make it compatible with our interface"""
