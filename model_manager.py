@@ -634,19 +634,24 @@ class AutoencoderTinyWrapper(nn.Module):
     def __init__(self, model):
         super().__init__()
         self.model = model
+        self._device = None
         
     def encode(self, x):
+        x = x.to(self.model.device)
         return self.model.encoder(x)
         
     def decode(self, x):
+        x = x.to(self.model.device)
         return self.model.decoder(x).clamp(0, 1)
         
     def forward(self, x):
+        x = x.to(self.model.device)
         latent = self.encode(x)
         return self.decode(latent)
         
     def to(self, device):
         """Move model to device and ensure encoder/decoder are also moved"""
+        self._device = device
         self.model.to(device)
         self.model.encoder.to(device)
         self.model.decoder.to(device)
@@ -654,13 +659,20 @@ class AutoencoderTinyWrapper(nn.Module):
         
     def cpu(self):
         """Move model to CPU and ensure encoder/decoder are also moved"""
+        self._device = 'cpu'
         self.model.cpu()
         self.model.encoder.cpu()
         self.model.decoder.cpu()
         return self
         
     def eval(self):
+        """Set model to evaluation mode"""
         self.model.eval()
+        return self
+        
+    def train(self, mode=True):
+        """Set model to train mode"""
+        self.model.train(mode)
         return self
         
     def parameters(self):
@@ -671,3 +683,9 @@ class AutoencoderTinyWrapper(nn.Module):
         
     def buffers(self):
         return self.model.buffers()
+        
+    @property
+    def device(self):
+        if self._device is None:
+            return next(self.parameters()).device
+        return self._device
