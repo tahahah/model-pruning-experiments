@@ -63,7 +63,7 @@ class DCAETrainer(Trainer):
         
         # Initialize parent class after our initialization
         super().__init__(path, model, data_provider)
-        log_gpu_memory("After trainer init")
+        
     
     def _ensure_metrics_initialized(self):
         """Lazy initialization of metrics to save memory"""
@@ -216,7 +216,7 @@ class DCAETrainer(Trainer):
 
     def run_step(self, feed_dict):
         images = feed_dict["data"]
-        log_gpu_memory("Before forward pass")
+        
         
         # Calculate and print memory occupied by images
         image_memory = images.element_size() * images.nelement() / (1024 * 1024)  # Convert to MB
@@ -244,7 +244,6 @@ class DCAETrainer(Trainer):
             # Decode
             reconstructed = model.decode(encoded)
             del encoded
-            log_gpu_memory("After decode")
             
             # Move images to same device and dtype as reconstructed
             if images.device != reconstructed.device or images.dtype != reconstructed.dtype:
@@ -259,7 +258,6 @@ class DCAETrainer(Trainer):
                 recon_norm = self.normalize_for_lpips(reconstructed)
                 perceptual_loss = self.lpips(images_norm, recon_norm)
                 del images_norm, recon_norm
-            log_gpu_memory("After LPIPS")
             
             # Total loss
             total_loss = (self.run_config.reconstruction_weight * recon_loss + 
@@ -275,7 +273,7 @@ class DCAETrainer(Trainer):
         # Cleanup
         del images, reconstructed
         torch.cuda.empty_cache()
-        log_gpu_memory("After cleanup")
+        
         
         return result
         
@@ -289,16 +287,16 @@ class DCAETrainer(Trainer):
                 if step >= self.run_config.steps_per_epoch:
                     break
                     
-                log_gpu_memory(f"Start of step {step}")
+                
                 feed_dict = self.before_step(feed_dict)
                 self.optimizer.zero_grad()
                 
                 output_dict = self.run_step(feed_dict)
-                log_gpu_memory(f"After run_step {step}")
+                
                 
                 # Scale loss and backward
                 self.scaler.scale(output_dict["loss"]).backward()
-                log_gpu_memory(f"After backward {step}")
+                
                 
                 # Update metrics
                 train_loss.update(output_dict["loss"].item(), feed_dict["data"].size(0))
@@ -336,7 +334,6 @@ class DCAETrainer(Trainer):
                         if isinstance(feed_dict[key], torch.Tensor):
                             feed_dict[key] = feed_dict[key].cpu()
                 torch.cuda.empty_cache()
-                log_gpu_memory(f"End of step {step}")
                 
                 # Update progress bar
                 t.set_postfix({
