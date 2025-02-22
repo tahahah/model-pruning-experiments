@@ -9,7 +9,7 @@ data_provider:
   image_size: 512
   verification_mode: "no_checks"
   streaming: true  # Set to True for original streaming behavior
-  batch_size: 8  # Increased from 1 for more stable gradients
+  batch_size: 2  # Increased from 1 for more stable gradients
   num_workers: 2
   val_steps: 100  # Number of validation steps
 
