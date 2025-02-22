@@ -16,7 +16,7 @@ data_provider:
 # Training Configuration
 run_config:
   n_epochs: 20  # Increased to give more training time
-  steps_per_epoch: 300  # Number of training steps per epoch
+  steps_per_epoch: 1000  # Number of training steps per epoch
   init_lr: 5.0e-5  # Reduced learning rate for stability
   warmup_epochs: 2  # Reduced warmup period
   warmup_lr: 1.0e-6
@@ -37,8 +37,8 @@ run_config:
 
 # Model Configuration
 model:
-  reconstruction_weight: 1.0
-  perceptual_weight: 0.01  # Reduced to prioritize reconstruction early in training
+  reconstruction_weight: 0.2
+  perceptual_weight: 0.8  # Reduced to prioritize reconstruction early in training
 
 # Logging Configuration
 logging:
