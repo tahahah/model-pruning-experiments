@@ -326,7 +326,7 @@ class VAEPruningTrainer(Trainer):
                     )
                 
                 # Optimizer step
-                self.pruner.regularize(model)
+                self.pruner.regularize(self.model)
                 self.after_step()
                 del output_dict["loss"]  # Free GPU tensor
                 
