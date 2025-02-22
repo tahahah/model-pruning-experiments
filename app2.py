@@ -243,8 +243,7 @@ def create_interface() -> gr.Blocks:
                         )
                         with gr.Row():
                             equipped_validate = gr.Button("Validate")
-                            save
-                             = gr.Button("Save to HuggingFace", variant="secondary")
+                            save_hf = gr.Button("Save to HuggingFace", variant="secondary")
                         
                         save_status = gr.Textbox(
                             label="Save Status",
