@@ -410,33 +410,27 @@ class ModelManager:
             self.logger.error(f"Error equipping experimental model: {str(e)}\n{traceback.format_exc()}")
             raise
     
-    def _calculate_loss(self, original: torch.Tensor, reconstructed: torch.Tensor) -> Dict[str, float]:
+    def _calculate_loss(self, original: torch.Tensor, reconstructed: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Calculate reconstruction and perceptual losses"""
         try:
-            # Ensure both tensors are on the same device as LPIPS
-            original = original.to(self.device)
-            reconstructed = reconstructed.to(self.device)
+            def normalize_for_lpips(x):
+                return (x.clamp(-1, 1) + 1) / 2
             
-            # Move LPIPS to same device if needed
-            if self.lpips.device != self.device:
-                self.lpips = self.lpips.to(self.device)
-            
-            # Calculate reconstruction loss
+            # Reconstruction loss (MSE)
             recon_loss = F.mse_loss(reconstructed, original)
             
-            # Calculate perceptual loss
-            perceptual_loss = self.lpips(
-                self.normalize_for_lpips(original),
-                self.normalize_for_lpips(reconstructed)
-            )
+            # Perceptual loss (LPIPS)
+            images_norm = normalize_for_lpips(original)
+            recon_norm = normalize_for_lpips(reconstructed)
+            perceptual_loss = self.lpips(images_norm, recon_norm)
             
             # Total loss
-            loss = recon_loss + 0.1 * perceptual_loss
+            total_loss = recon_loss + 0.1 * perceptual_loss
             
             return {
-                "loss": loss.item(),
-                "recon_loss": recon_loss.item(),
-                "perceptual_loss": perceptual_loss.item()
+                "loss": total_loss,
+                "recon_loss": recon_loss,
+                "perceptual_loss": perceptual_loss,
             }
         except Exception as e:
             self.logger.error(f"Error calculating loss: {str(e)}\n{traceback.format_exc()}")
@@ -490,7 +484,6 @@ class ModelManager:
             with torch.no_grad():
                 latent = model.encode(images)
                 reconstructed = model.decode(latent)
-                reconstructed = reconstructed.to(self.device)  # Ensure reconstructed is on same device as images
             latency = (time.time() - start_time) * 1000  # Convert to ms
             
             # Calculate losses
@@ -636,55 +629,60 @@ class ModelManager:
             self.logger.error(f"Failed to upload checkpoint to HuggingFace: {str(e)}\n{traceback.format_exc()}")
             return False
 
+    def move_model_to_device(self, model_name: str, device: str) -> None:
+        """Move a specific model to the specified device."""
+        try:
+            if model_name not in ["original_model", "equipped_model", "experimental_model"]:
+                raise ValueError(f"Invalid model name: {model_name}")
+                
+            model = getattr(self, model_name)
+            if model is None:
+                self.logger.warning(f"{model_name} does not exist")
+                return
+                
+            if device == "cuda" and not torch.cuda.is_available():
+                self.logger.warning("CUDA not available, using CPU instead")
+                device = "cpu"
+                
+            model.to(device)
+            if device == "cuda":
+                # Ensure the encoder and decoder are on the right device for AutoencoderTiny
+                if isinstance(model, AutoencoderTinyWrapper):
+                    model.model.encoder.to(device)
+                    model.model.decoder.to(device)
+            self.active_model = model_name
+            self.logger.info(f"Moved {model_name} to {device}")
+            
+        except Exception as e:
+            self.logger.error(f"Error moving model to device: {str(e)}\n{traceback.format_exc()}")
+            raise
+    
 class AutoencoderTinyWrapper(nn.Module):
     """Wrapper for AutoencoderTiny to make it compatible with our interface"""
     def __init__(self, model):
         super().__init__()
         self.model = model
-        self._device = None
         
     def encode(self, x):
-        if self._device is not None:
-            x = x.to(self._device)
-            if self.model.device != self._device:
-                self.model = self.model.to(self._device)
         return self.model.encoder(x)
         
     def decode(self, x):
-        if self._device is not None:
-            x = x.to(self._device)
-            if self.model.device != self._device:
-                self.model = self.model.to(self._device)
         return self.model.decoder(x).clamp(0, 1)
         
     def forward(self, x):
-        if self._device is not None:
-            x = x.to(self._device)
-            if self.model.device != self._device:
-                self.model = self.model.to(self._device)
         latent = self.encode(x)
         return self.decode(latent)
         
     def to(self, device):
-        """Move model to device and ensure encoder/decoder are also moved"""
-        self._device = device
-        self.model = self.model.to(device)
+        self.model.to(device)
         return self
         
     def cpu(self):
-        """Move model to CPU and ensure encoder/decoder are also moved"""
-        self._device = 'cpu'
-        self.model = self.model.cpu()
+        self.model.cpu()
         return self
         
     def eval(self):
-        """Set model to evaluation mode"""
         self.model.eval()
-        return self
-        
-    def train(self, mode=True):
-        """Set model to train mode"""
-        self.model.train(mode)
         return self
         
     def parameters(self):
@@ -695,9 +693,3 @@ class AutoencoderTinyWrapper(nn.Module):
         
     def buffers(self):
         return self.model.buffers()
-        
-    @property
-    def device(self):
-        if self._device is None:
-            return next(self.parameters()).device
-        return self._device

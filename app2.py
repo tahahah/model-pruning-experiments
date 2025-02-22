@@ -175,6 +175,14 @@ Inference Latency: {metrics.get('latency', '0 ms')}"""
             logger.error(f"Error saving to HuggingFace: {str(e)}")
             return f"Error saving to HuggingFace: {str(e)}"
 
+    def move_model(self, model_name: str, device: str):
+        try:
+            self.model_manager.move_model_to_device(model_name, device)
+            return f"Moved {model_name} to {device}"
+        except Exception as e:
+            logging.error(f"Error moving model: {str(e)}")
+            return f"Error: {str(e)}"
+
 def create_interface() -> gr.Blocks:
     ui = ModelPruningUI()
     
@@ -315,6 +323,27 @@ def create_interface() -> gr.Blocks:
                             "Promote to Equipped Model",
                             variant="primary"
                         )
+                    
+                    # Model device controls
+                    with gr.Row():
+                        gr.Markdown("### Device Controls")
+                    with gr.Row():
+                        with gr.Column():
+                            gr.Markdown("Original Model")
+                            with gr.Row():
+                                move_original_cuda = gr.Button("To CUDA", size="sm")
+                                move_original_cpu = gr.Button("To CPU", size="sm")
+                        with gr.Column():
+                            gr.Markdown("Equipped Model")
+                            with gr.Row():
+                                move_equipped_cuda = gr.Button("To CUDA", size="sm")
+                                move_equipped_cpu = gr.Button("To CPU", size="sm")
+                        with gr.Column():
+                            gr.Markdown("Experimental Model")
+                            with gr.Row():
+                                move_exp_cuda = gr.Button("To CUDA", size="sm")
+                                move_exp_cpu = gr.Button("To CPU", size="sm")
+                    device_status = gr.Textbox(label="Device Status", interactive=False)
         
         # Event handlers
         load_btn.click(
@@ -397,6 +426,32 @@ def create_interface() -> gr.Blocks:
             fn=ui.save_to_huggingface,
             inputs=[],
             outputs=[save_status]
+        )
+        
+        # Device control events
+        move_original_cuda.click(
+            fn=lambda: ui.move_model("original_model", "cuda"),
+            outputs=device_status
+        )
+        move_original_cpu.click(
+            fn=lambda: ui.move_model("original_model", "cpu"),
+            outputs=device_status
+        )
+        move_equipped_cuda.click(
+            fn=lambda: ui.move_model("equipped_model", "cuda"),
+            outputs=device_status
+        )
+        move_equipped_cpu.click(
+            fn=lambda: ui.move_model("equipped_model", "cpu"),
+            outputs=device_status
+        )
+        move_exp_cuda.click(
+            fn=lambda: ui.move_model("experimental_model", "cuda"),
+            outputs=device_status
+        )
+        move_exp_cpu.click(
+            fn=lambda: ui.move_model("experimental_model", "cpu"),
+            outputs=device_status
         )
     
     return interface
