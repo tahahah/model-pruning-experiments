@@ -282,7 +282,10 @@ class VAEPruningTrainer(Trainer):
         train_loss = AverageMeter(is_distributed=False)
         train_recon_loss = AverageMeter(is_distributed=False)
         train_perceptual_loss = AverageMeter(is_distributed=False)
+        
+        # Initialize pruning regularizer at start of epoch
         self.pruner.update_regularizer()
+        
         with tqdm(total=self.run_config.steps_per_epoch, desc=f"Training Epoch #{epoch}") as t:
             for step, feed_dict in enumerate(self.data_provider.train):
                 if step >= self.run_config.steps_per_epoch:
@@ -296,8 +299,15 @@ class VAEPruningTrainer(Trainer):
                 
                 
                 # Scale loss and backward
-                self.scaler.scale(output_dict["loss"]).backward()
-                
+                if self.enable_amp:
+                    self.scaler.scale(output_dict["loss"]).backward()
+                    self.pruner.regularize(self.model)  # Add regularization after backward
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    output_dict["loss"].backward()
+                    self.pruner.regularize(self.model)  # Add regularization after backward
+                    self.optimizer.step()
                 
                 # Update metrics
                 train_loss.update(output_dict["loss"].item(), feed_dict["data"].size(0))
@@ -326,7 +336,6 @@ class VAEPruningTrainer(Trainer):
                     )
                 
                 # Optimizer step
-                self.pruner.regularize(self.model)
                 self.after_step()
                 del output_dict["loss"]  # Free GPU tensor
                 
@@ -356,21 +365,28 @@ class VAEPruningTrainer(Trainer):
         return metrics
         
     def train(self):
+        base_macs, base_nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
         
-        self.pruner = tp.pruner.GroupNormPruner( # We can always choose MetaPruner if sparse training is not required.
+        # Add ignored layers to protect critical parts
+        ignored_layers = []
+        for m in self.model.modules():
+            if isinstance(m, torch.nn.Linear):  # Protect bottleneck layers
+                ignored_layers.append(m)
+        # Initialize pruner with conservative settings
+        self.pruner = tp.pruner.GroupNormPruner(
             self.model,
             torch.randn((1, 3, 512, 512)),
             importance=tp.importance.GroupNormImportance(p=2),
             pruning_ratio=0.5, # remove 50% channels, ResNet18 = {64, 128, 256, 512} => ResNet18_Half = {32, 64, 128, 256}
             # pruning_ratio_dict = {model.conv1: 0.2, model.layer2: 0.8}, # customized pruning ratios for layers or blocks
-            # ignored_layers=ignored_layers,
+            ignored_layers=ignored_layers,
             global_pruning=True,
             isomorphic=True,
             iterative_steps=self.run_config.n_epochs,
             round_to=8, # It's recommended to round dims/channels to 4x or 8x for acceleration. Please see: https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
         )
         
-        base_macs, base_nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
+        
 
         for epoch in range(self.start_epoch, self.run_config.n_epochs):
             self.pruner.step()
@@ -382,8 +398,8 @@ class VAEPruningTrainer(Trainer):
             
             # Run validation if needed
             if (epoch + 1) % self.run_config.eval_interval == 0:
-                val_info = self.validate(epoch=epoch)
-                
+                val_info = self._validate(self.model, self.data_provider.val, epoch=epoch)
+            
                 # Save best model
                 if val_info["val/loss"] < self.best_val:
                     self.best_val = val_info["val/loss"]
@@ -392,7 +408,7 @@ class VAEPruningTrainer(Trainer):
             # Regular checkpoint
             if (epoch + 1) % self.run_config.save_interval == 0:
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
-                
+            
             # Log training progress
             if is_master():
                 log_str = f"Epoch {epoch}: "
