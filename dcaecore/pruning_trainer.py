@@ -315,18 +315,18 @@ class VAEPruningTrainer(Trainer):
                 train_perceptual_loss.update(output_dict["perceptual_loss"], feed_dict["data"].size(0))
                 
                 # Log training metrics and images
+                self.write_metric(
+                    {
+                        "train/loss": output_dict["loss"].item(),
+                        "train/recon_loss": output_dict["recon_loss"],
+                        "train/perceptual_loss": output_dict["perceptual_loss"],
+                        "train/lr": self.optimizer.param_groups[0]["lr"],
+                        "train/epoch": epoch,
+                        "train/step": step + epoch * self.run_config.steps_per_epoch,
+                    },
+                    "train",
+                )
                 if step % self.run_config.log_interval == 0:
-                    self.write_metric(
-                        {
-                            "train/loss": output_dict["loss"].item(),
-                            "train/recon_loss": output_dict["recon_loss"],
-                            "train/perceptual_loss": output_dict["perceptual_loss"],
-                            "train/lr": self.optimizer.param_groups[0]["lr"],
-                            "train/epoch": epoch,
-                            "train/step": step + epoch * self.run_config.steps_per_epoch,
-                        },
-                        "train",
-                    )
                     
                     self.log_images(
                         feed_dict["data"].cpu(), 
@@ -381,7 +381,7 @@ class VAEPruningTrainer(Trainer):
             self.model,
             torch.randn((1, 3, 512, 512)),
             importance=tp.importance.TaylorImportance(),  # Taylor expansion for better importance estimation
-            pruning_ratio=0.2,  # Start with a more conservative ratio
+            pruning_ratio=0.7,  # Start with a more conservative ratio
             ignored_layers=ignored_layers,
             global_pruning=True,  # Enable global pruning to avoid scope issues
             isomorphic=True,      # Keep network structure balanced
