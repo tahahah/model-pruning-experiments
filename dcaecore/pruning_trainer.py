@@ -365,7 +365,7 @@ class VAEPruningTrainer(Trainer):
             # pruning_ratio_dict = {model.conv1: 0.2, model.layer2: 0.8}, # customized pruning ratios for layers or blocks
             # ignored_layers=ignored_layers,
             global_pruning=True,
-            isomorphic_pruning=True,
+            isomorphic=True,
             iterative_steps=self.run_config.n_epochs,
             round_to=8, # It's recommended to round dims/channels to 4x or 8x for acceleration. Please see: https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
         )
