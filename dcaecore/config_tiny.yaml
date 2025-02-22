@@ -1,0 +1,63 @@
+
+# Dataset Configuration
+data_provider:
+  name: "SimplePacmanDatasetProvider"
+  train_dataset: "Tahahah/PacmanDataset_3"
+  val_dataset: "Tahahah/PacmanDataset_2"
+  train_split: "train[:200]"  # Only get first 200 samples if not streaming
+  val_split: "train[:200]"    # Only get first 200 samples if not streaming
+  image_size: 512
+  verification_mode: "no_checks"
+  streaming: true  # Set to True for original streaming behavior
+  batch_size: 1
+  num_workers: 2
+  val_steps: 100  # Number of validation steps
+
+# Training Configuration
+run_config:
+  n_epochs: 1
+  steps_per_epoch: 100  # Number of training steps per epoch
+  init_lr: 1.0e-4
+  warmup_epochs: 5
+  warmup_lr: 1.0e-6
+  lr_schedule_name: "cosine"
+  lr_schedule_param:
+    step: []
+  optimizer_name: "adamw"
+  optimizer_params:
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+  weight_decay: 0.05
+  no_wd_keys: []
+  grad_clip: 1.0
+  reset_bn: false
+  reset_bn_size: 0
+  reset_bn_batch_size: 2
+  eval_image_size: [512, 512]
+
+# Model Configuration
+model:
+  reconstruction_weight: 1.0
+  perceptual_weight: 0.1
+
+# Logging Configuration
+logging:
+  save_interval: 5  # Save checkpoint every N epochs
+  eval_interval: 1  # Run validation every N epochs
+  log_interval: 100  # Log every N steps
+  save_images: true
+  num_save_images: 8  # Number of sample images to save during validation
+  
+  # Wandb logging
+  wandb:
+    enabled: true
+    project: "tsaed-finetuning"
+    entity: null  # Set your wandb entity
+    tags: ["dcae", "autoencoder"]
+
+# Hardware/System settings
+system:
+  seed: 42
+  num_workers: 1
+  pin_memory: true
+  cudnn_benchmark: true
