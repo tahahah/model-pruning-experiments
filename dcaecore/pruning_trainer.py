@@ -282,7 +282,7 @@ class VAEPruningTrainer(Trainer):
         train_loss = AverageMeter(is_distributed=False)
         train_recon_loss = AverageMeter(is_distributed=False)
         train_perceptual_loss = AverageMeter(is_distributed=False)
-        self.pruner.update_regularizer()
+        # self.pruner.update_regularizer()
         with tqdm(total=self.run_config.steps_per_epoch, desc=f"Training Epoch #{epoch}") as t:
             for step, feed_dict in enumerate(self.data_provider.train):
                 if step >= self.run_config.steps_per_epoch:
@@ -326,7 +326,7 @@ class VAEPruningTrainer(Trainer):
                     )
                 
                 # Optimizer step
-                self.pruner.regularize(self.model)
+                # self.pruner.regularize(self.model)
                 self.after_step()
                 del output_dict["loss"]  # Free GPU tensor
                 
@@ -357,23 +357,23 @@ class VAEPruningTrainer(Trainer):
         
     def train(self):
         
-        self.pruner = tp.pruner.GroupNormPruner( # We can always choose MetaPruner if sparse training is not required.
-            self.model,
-            torch.randn((1, 3, 512, 512)),
-            importance=tp.importance.GroupNormImportance(p=2),
-            pruning_ratio=0.5, # remove 50% channels, ResNet18 = {64, 128, 256, 512} => ResNet18_Half = {32, 64, 128, 256}
-            # pruning_ratio_dict = {model.conv1: 0.2, model.layer2: 0.8}, # customized pruning ratios for layers or blocks
-            # ignored_layers=ignored_layers,
-            global_pruning=True,
-            isomorphic=True,
-            iterative_steps=self.run_config.n_epochs,
-            round_to=8, # It's recommended to round dims/channels to 4x or 8x for acceleration. Please see: https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
-        )
+        # self.pruner = tp.pruner.GroupNormPruner( # We can always choose MetaPruner if sparse training is not required.
+        #     self.model,
+        #     torch.randn((1, 3, 512, 512)),
+        #     importance=tp.importance.GroupNormImportance(p=2),
+        #     pruning_ratio=0.5, # remove 50% channels, ResNet18 = {64, 128, 256, 512} => ResNet18_Half = {32, 64, 128, 256}
+        #     # pruning_ratio_dict = {model.conv1: 0.2, model.layer2: 0.8}, # customized pruning ratios for layers or blocks
+        #     # ignored_layers=ignored_layers,
+        #     global_pruning=True,
+        #     isomorphic=True,
+        #     iterative_steps=self.run_config.n_epochs,
+        #     round_to=8, # It's recommended to round dims/channels to 4x or 8x for acceleration. Please see: https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html
+        # )
         
         base_macs, base_nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
 
         for epoch in range(self.start_epoch, self.run_config.n_epochs):
-            self.pruner.step()
+            # self.pruner.step()
             
             macs, nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
             print(f"MACs: {base_macs/1e9} G -> {macs/1e9} G, #Params: {base_nparams/1e6} M -> {nparams/1e6} M")
