@@ -4,8 +4,8 @@ data_provider:
   name: "SimplePacmanDatasetProvider"
   train_dataset: "Tahahah/PacmanDataset_3"
   val_dataset: "Tahahah/PacmanDataset_2"
-  train_split: "train[:1000]"  # Only get first 200 samples if not streaming
-  val_split: "train[:1000]"    # Only get first 200 samples if not streaming
+  train_split: "train[:200]"  # Only get first 200 samples if not streaming
+  val_split: "train[:200]"    # Only get first 200 samples if not streaming
   image_size: 512
   verification_mode: "no_checks"
   streaming: false  # Set to True for original streaming behavior
