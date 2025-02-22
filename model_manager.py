@@ -646,11 +646,17 @@ class AutoencoderTinyWrapper(nn.Module):
         return self.decode(latent)
         
     def to(self, device):
+        """Move model to device and ensure encoder/decoder are also moved"""
         self.model.to(device)
+        self.model.encoder.to(device)
+        self.model.decoder.to(device)
         return self
         
     def cpu(self):
+        """Move model to CPU and ensure encoder/decoder are also moved"""
         self.model.cpu()
+        self.model.encoder.cpu()
+        self.model.decoder.cpu()
         return self
         
     def eval(self):
