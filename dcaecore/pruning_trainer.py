@@ -407,7 +407,7 @@ class VAEPruningTrainer(Trainer):
             macs, nparams = tp.utils.count_ops_and_params(self.model, torch.randn((1, 3, 512, 512)))
             print(f"MACs: {base_macs/1e9} G -> {macs/1e9} G, #Params: {base_nparams/1e6} M -> {nparams/1e6} M")
             self.after_step()
-            write_metric({
+            self.write_metric({
                 "MAC (G)": macs/1e9,
                 "nparams (M)": nparams/1e6,
             })
