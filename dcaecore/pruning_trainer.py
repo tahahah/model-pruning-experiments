@@ -419,7 +419,8 @@ class VAEPruningTrainer(Trainer):
                 if val_info["val/loss"] < self.best_val:
                     self.best_val = val_info["val/loss"]
                     self.save_model(epoch=epoch, model_name="best.pt")
-                    self.model.save_pretrained(self.run_config.output_dir+f"_epoch_{epoch}")
+                    model_unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
+                    model_unwrapped.save_pretrained(self.run_config.output_dir+f"_epoch_{epoch}")
             
             self.pruner.step()
             
@@ -434,7 +435,8 @@ class VAEPruningTrainer(Trainer):
             # Regular checkpoint
             if (epoch + 1) % self.run_config.save_interval == 0:
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
-                self.model.save_pretrained(self.run_config.output_dir+f"_epoch_{epoch}")
+                model_unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
+                model_unwrapped.save_pretrained(self.run_config.output_dir+f"_epoch_{epoch}")
             
             # Log training progress
             if is_master():
