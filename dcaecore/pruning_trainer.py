@@ -296,6 +296,8 @@ class VAEPruningTrainer(Trainer):
         with tqdm(desc=f"Training Epoch #{epoch} (until loss recovery)") as t:
             for step, feed_dict in enumerate(self.data_provider.train):
                 # Only break if we've recovered the loss
+                if epoch == 0 and step >= self.run_config.steps_per_epoch:
+                    break
                 if loss_recovered:
                     break
                     
