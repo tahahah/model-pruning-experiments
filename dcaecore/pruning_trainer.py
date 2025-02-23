@@ -277,7 +277,7 @@ class VAEPruningTrainer(Trainer):
         
         
         return result
-        
+
     def _train_one_epoch(self, epoch):
         train_loss = AverageMeter(is_distributed=False)
         train_recon_loss = AverageMeter(is_distributed=False)
@@ -286,17 +286,23 @@ class VAEPruningTrainer(Trainer):
         # Initialize pruning regularizer at start of epoch
         self.pruner.update_regularizer()
         
-        with tqdm(total=self.run_config.steps_per_epoch, desc=f"Training Epoch #{epoch}") as t:
+        # Track if we've recovered the original loss
+        loss_recovered = False
+        original_loss = getattr(self, 'original_loss', None)
+        if original_loss is None and epoch == 0:
+            # Store the initial loss as target for recovery
+            self.original_loss = float('inf')  # Will be updated after first batch
+        
+        with tqdm(desc=f"Training Epoch #{epoch} (until loss recovery)") as t:
             for step, feed_dict in enumerate(self.data_provider.train):
-                if step >= self.run_config.steps_per_epoch:
+                # Only break if we've recovered the loss
+                if loss_recovered:
                     break
                     
-                
                 feed_dict = self.before_step(feed_dict)
                 self.optimizer.zero_grad()
                 
                 output_dict = self.run_step(feed_dict)
-                
                 
                 # Scale loss and backward
                 if self.enable_amp:
@@ -309,10 +315,20 @@ class VAEPruningTrainer(Trainer):
                     self.pruner.regularize(self.model)  # Add regularization after backward
                     self.optimizer.step()
                 
+                # Store original loss if this is the first batch of first epoch
+                if original_loss is None and epoch == 0 and step == 0:
+                    self.original_loss = output_dict["loss"].item()
+                    print(f"\nTarget loss for recovery: {self.original_loss:.6f}")
+                
                 # Update metrics
                 train_loss.update(output_dict["loss"].item(), feed_dict["data"].size(0))
                 train_recon_loss.update(output_dict["recon_loss"], feed_dict["data"].size(0))
                 train_perceptual_loss.update(output_dict["perceptual_loss"], feed_dict["data"].size(0))
+                
+                # Check if we've recovered the loss (using moving average)
+                if train_loss.avg <= self.original_loss:
+                    loss_recovered = True
+                    print(f"\nLoss recovered at step {step}! Current: {train_loss.avg:.6f}, Target: {self.original_loss:.6f}")
                 
                 # Log training metrics and images
                 self.write_metric(
@@ -401,6 +417,7 @@ class VAEPruningTrainer(Trainer):
                 if val_info["val/loss"] < self.best_val:
                     self.best_val = val_info["val/loss"]
                     self.save_model(epoch=epoch, model_name="best.pt")
+                    self.model.save_pretrained(self.run_config.output_dir+f"_epoch_{epoch}")
             
             self.pruner.step()
             
@@ -415,6 +432,7 @@ class VAEPruningTrainer(Trainer):
             # Regular checkpoint
             if (epoch + 1) % self.run_config.save_interval == 0:
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
+                self.model.save_pretrained(self.run_config.output_dir+f"_epoch_{epoch}")
             
             # Log training progress
             if is_master():
