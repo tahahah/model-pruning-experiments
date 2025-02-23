@@ -205,16 +205,16 @@ class VAEPruningTrainer(Trainer):
                     del encoded
                     del reconstructed
         
-        metrics = {
-            "val/loss": val_loss.avg,
-            "val/recon_loss": val_recon_loss.avg,
-            "val/perceptual_loss": val_perceptual_loss.avg,
-            "val/psnr": val_psnr.avg,
-            "val/ssim": val_ssim.avg,
-            "val/lpips": val_lpips.avg
-        }
-        
-        return metrics
+                metrics = {
+                    "val/loss": val_loss.avg,
+                    "val/recon_loss": val_recon_loss.avg,
+                    "val/perceptual_loss": val_perceptual_loss.avg,
+                    "val/psnr": val_psnr.avg,
+                    "val/ssim": val_ssim.avg,
+                    "val/lpips": val_lpips.avg
+                }
+                
+                return metrics
 
     def run_step(self, feed_dict):
         images = feed_dict["data"]
@@ -294,13 +294,14 @@ class VAEPruningTrainer(Trainer):
             if original_loss is None:
                 self.original_loss = self.first_epoch_loss  # Set from the stored first epoch loss
         
-        with tqdm(desc=f"Training Epoch #{epoch} (until loss recovery)" if epoch > 0 else f"Training Epoch #{epoch}", total=self.run_config.steps_per_epoch) as t:
+        # Only set total steps for first epoch
+        total_steps = self.run_config.steps_per_epoch if epoch == 0 else None
+        with tqdm(desc=f"Training Epoch #{epoch} (until loss recovery)" if epoch > 0 else f"Training Epoch #{epoch}", total=total_steps) as t:
             for step, feed_dict in enumerate(self.data_provider.train):
                 # Break conditions
-                if step >= self.run_config.steps_per_epoch:
-                    if epoch == 0:  # End of first epoch
-                        self.first_epoch_loss = train_loss.avg
-                        print(f"\nFirst epoch loss (target): {self.first_epoch_loss:.6f}")
+                if epoch == 0 and step >= self.run_config.steps_per_epoch:
+                    self.first_epoch_loss = train_loss.avg
+                    print(f"\nFirst epoch loss (target): {self.first_epoch_loss:.6f}")
                     break
                 if epoch > 0 and loss_recovered:
                     break
