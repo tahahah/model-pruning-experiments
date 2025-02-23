@@ -427,7 +427,7 @@ class VAEPruningTrainer(Trainer):
                     log_str += f", val_lpips={val_info['val/lpips']:.4f}"
                 self.write_log(log_str)
 
-    def write_metric(self, metric_dict: Dict[str, Any], metric_type: str):
+    def write_metric(self, metric_dict: Dict[str, Any], metric_type: str = None):
         """Override write_metric to ensure proper wandb logging"""
         if wandb_available and wandb.run is not None:
             wandb.log(metric_dict)
