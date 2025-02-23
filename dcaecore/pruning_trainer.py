@@ -61,7 +61,8 @@ class VAEPruningTrainer(Trainer):
         
         # Initialize best validation score
         self.best_val = float('inf')
-
+        self.first_epoch_loss = None
+        
         # Initialize parent class after our initialization
         super().__init__(path, model, data_provider)
         
@@ -288,17 +289,20 @@ class VAEPruningTrainer(Trainer):
         
         # Track if we've recovered the original loss
         loss_recovered = False
-        original_loss = getattr(self, 'original_loss', None)
-        if original_loss is None and epoch == 0:
-            # Store the initial loss as target for recovery
-            self.original_loss = float('inf')  # Will be updated after first batch
+        if epoch > 0:  # After first epoch
+            original_loss = getattr(self, 'original_loss', None)
+            if original_loss is None:
+                self.original_loss = self.first_epoch_loss  # Set from the stored first epoch loss
         
-        with tqdm(desc=f"Training Epoch #{epoch} (until loss recovery)") as t:
+        with tqdm(desc=f"Training Epoch #{epoch} (until loss recovery)" if epoch > 0 else f"Training Epoch #{epoch}", total=self.run_config.steps_per_epoch) as t:
             for step, feed_dict in enumerate(self.data_provider.train):
-                # Only break if we've recovered the loss
-                if epoch == 0 and step >= self.run_config.steps_per_epoch:
+                # Break conditions
+                if step >= self.run_config.steps_per_epoch:
+                    if epoch == 0:  # End of first epoch
+                        self.first_epoch_loss = train_loss.avg
+                        print(f"\nFirst epoch loss (target): {self.first_epoch_loss:.6f}")
                     break
-                if loss_recovered:
+                if epoch > 0 and loss_recovered:
                     break
                     
                 feed_dict = self.before_step(feed_dict)
@@ -317,20 +321,15 @@ class VAEPruningTrainer(Trainer):
                     self.pruner.regularize(self.model)  # Add regularization after backward
                     self.optimizer.step()
                 
-                # Store original loss if this is the first batch of first epoch
-                if original_loss is None and epoch == 0 and step == 0:
-                    self.original_loss = output_dict["loss"].item()
-                    print(f"\nTarget loss for recovery: {self.original_loss:.6f}")
-                
                 # Update metrics
                 train_loss.update(output_dict["loss"].item(), feed_dict["data"].size(0))
                 train_recon_loss.update(output_dict["recon_loss"], feed_dict["data"].size(0))
                 train_perceptual_loss.update(output_dict["perceptual_loss"], feed_dict["data"].size(0))
                 
-                # Check if we've recovered the loss (using moving average)
-                if train_loss.avg <= self.original_loss:
+                # Check if we've recovered the loss (after first epoch)
+                if epoch > 0 and train_loss.avg <= self.first_epoch_loss:
                     loss_recovered = True
-                    print(f"\nLoss recovered at step {step}! Current: {train_loss.avg:.6f}, Target: {self.original_loss:.6f}")
+                    print(f"\nLoss recovered! Current: {train_loss.avg:.6f}, Target: {self.first_epoch_loss:.6f}")
                 
                 # Log training metrics and images
                 self.write_metric(
