@@ -134,8 +134,8 @@ class DCAETrainer(Trainer):
                         # Get the actual model from DDP wrapper if needed
                         model_unwrapped = model.module if hasattr(model, 'module') else model
                         
-                        encoded = model_unwrapped.encode(images)
-                        reconstructed = model_unwrapped.decode(encoded)
+                        encoded = model_unwrapped.encoder(images)
+                        reconstructed = model_unwrapped.decoder(encoded)
                         
                         # Calculate losses
                         recon_loss = F.mse_loss(reconstructed, images)
@@ -233,16 +233,16 @@ class DCAETrainer(Trainer):
                 for i in range(0, batch_size, 2):
                     chunk = images[i:i+2].cuda()
                     with torch.no_grad():
-                        encoded_chunks.append(model.encode(chunk).cpu())
+                        encoded_chunks.append(model.encoder(chunk).cpu())
                     del chunk
                     torch.cuda.empty_cache()
                 encoded = torch.cat(encoded_chunks, dim=0).cuda()
                 del encoded_chunks
             else:
-                encoded = model.encode(images)
+                encoded = model.encoder(images)
             
             # Decode
-            reconstructed = model.decode(encoded)
+            reconstructed = model.decoder(encoded)
             del encoded
             
             # Move images to same device and dtype as reconstructed
@@ -365,10 +365,14 @@ class DCAETrainer(Trainer):
                 if val_info["val/loss"] < self.best_val:
                     self.best_val = val_info["val/loss"]
                     self.save_model(epoch=epoch, model_name="best.pt")
+                    model_unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
+                    model_unwrapped.save_pretrained(self.path+f"_epoch_{epoch}")
             
             # Regular checkpoint
             if (epoch + 1) % self.run_config.save_interval == 0:
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
+                model_unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
+                model_unwrapped.save_pretrained(self.path+f"_epoch_{epoch}")
                 
             # Log training progress
             if is_master():

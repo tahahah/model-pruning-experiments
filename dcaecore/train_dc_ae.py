@@ -19,7 +19,7 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
 sys.path.append(ROOT_DIR)
-
+from diffusers import AutoencoderTiny
 from efficientvit.ae_model_zoo import DCAE_HF
 from efficientvit.models.efficientvit.dc_ae import DCAE
 from dcaecore.trainer import DCAETrainer, DCAERunConfig
@@ -67,10 +67,10 @@ def setup_wandb(config):
     wandb_config = config.get('logging', {}).get('wandb', {})
     if wandb_config.get('enabled', False):
         wandb.init(
-            project=wandb_config.get('project', 'dcae-finetuning'),
+            project=wandb_config.get('project', 'taesd-finetuning'),
             entity=wandb_config.get('entity', None),
             config=config,
-            tags=wandb_config.get('tags', ['dcae', 'autoencoder'])
+            tags=wandb_config.get('tags', ['taesd', 'autoencoder'])
         )
 
 def create_run_config(config: dict) -> DCAERunConfig:
@@ -211,7 +211,10 @@ def main():
     
     # Load pretrained model
     logger.info(f"Loading pretrained model from {args.pretrained}")
-    model = DCAE_HF.from_pretrained(args.pretrained)
+    if args.pretrained.startswith("mit"):
+        model = DCAE_HF.from_pretrained(args.pretrained)
+    else:
+        model = AutoencoderTiny.from_pretrained(args.pretrained)
     
     # Create run config
     run_config = create_run_config(config)
