@@ -84,12 +84,35 @@ class StreamingPacmanDataset(IterableDataset):
         # For non-streaming, return parsed limit or default
         return self.sample_limit if self.sample_limit is not None else 100
 
+    
     def build_transform(self):
+
+        def make_square(image):
+            # Calculate the necessary padding to make the image square
+            width, height = image.size
+            max_dim = max(width, height)
+            padding = [
+                (max_dim - width) // 2,  # Left padding
+                (max_dim - height) // 2, # Top padding
+                (max_dim - width + 1) // 2,  # Right padding
+                (max_dim - height + 1) // 2  # Bottom padding
+            ]
+            return transforms.functional.pad(image, padding, fill=0, padding_mode='constant')
+
+        def convert_to_rgb(img):
+            return img.convert("RGB")
+
+        def rotate_90_clockwise(img):
+            return img.rotate(90, expand=True)
+
         return transforms.Compose([
-            transforms.Resize((self.cfg.image_size, self.cfg.image_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
+                        transforms.Lambda(convert_to_rgb),
+                        transforms.Lambda(make_square),  # Make the image square with padding
+                        transforms.Resize(self.cfg.image_size),          # Resize to 512x512
+                        transforms.functional.hflip,     # Horizontal mirror flip
+                        transforms.Lambda(rotate_90_clockwise),  # Rotate 90 degrees clockwise
+                        transforms.ToTensor()
+                    ])
 
 class CachedPacmanDataset(Dataset):
     """Dataset that efficiently caches downloaded samples"""
