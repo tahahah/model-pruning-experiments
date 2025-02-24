@@ -304,25 +304,24 @@ class DCAETrainer(Trainer):
                 train_perceptual_loss.update(output_dict["perceptual_loss"], feed_dict["data"].size(0))
                 
                 # Log training metrics and images
-                if step % self.run_config.log_interval == 0:
-                    self.write_metric(
-                        {
-                            "train/loss": output_dict["loss"].item(),
-                            "train/recon_loss": output_dict["recon_loss"],
-                            "train/perceptual_loss": output_dict["perceptual_loss"],
-                            "train/lr": self.optimizer.param_groups[0]["lr"],
-                            "train/epoch": epoch,
-                            "train/step": step + epoch * self.run_config.steps_per_epoch,
-                        },
-                        "train",
-                    )
-                    
-                    self.log_images(
-                        feed_dict["data"].cpu(), 
-                        output_dict["reconstructed"],
-                        prefix="train",
-                        step=step + epoch * self.run_config.steps_per_epoch
-                    )
+                self.write_metric(
+                    {
+                        "train/loss": output_dict["loss"].item(),
+                        "train/recon_loss": output_dict["recon_loss"],
+                        "train/perceptual_loss": output_dict["perceptual_loss"],
+                        "train/lr": self.optimizer.param_groups[0]["lr"],
+                        "train/epoch": epoch,
+                        "train/step": step + epoch * self.run_config.steps_per_epoch,
+                    },
+                    "train",
+                )
+                
+                self.log_images(
+                    feed_dict["data"].cpu(), 
+                    output_dict["reconstructed"],
+                    prefix="train",
+                    step=step + epoch * self.run_config.steps_per_epoch
+                )
                 
                 # Optimizer step
                 self.after_step()
