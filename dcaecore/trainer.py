@@ -370,7 +370,7 @@ class DCAETrainer(Trainer):
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
                 model_unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
                 # model_unwrapped.save_pretrained(self.path+f"_epoch_{epoch}")
-                wandb.log_model(path=self.path+f"_epoch_{epoch}")
+                # wandb.log_model(path=self.path+f"_epoch_{epoch}")
                 
             # Log training progress
             if is_master():
