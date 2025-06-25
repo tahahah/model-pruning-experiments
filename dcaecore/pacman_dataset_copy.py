@@ -143,6 +143,7 @@ class CachedPacmanDataset(Dataset):
         
         # Load or create cache
         self.samples = self._load_or_create_cache()
+        self.transform = self.build_transform()
 
     def _load_or_create_cache(self):
         """Load cached samples or create new cache if doesn't exist"""
