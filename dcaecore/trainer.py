@@ -363,13 +363,13 @@ class DCAETrainer(Trainer):
                     self.best_val = val_info["val/loss"]
                     self.save_model(epoch=epoch, model_name="best.pt")
                     model_unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
-                    model_unwrapped.save_pretrained(self.path+f"_epoch_{epoch}")
+                    # model_unwrapped.save_pretrained(self.path+f"_epoch_{epoch}")
             
             # Regular checkpoint
             if (epoch + 1) % self.run_config.save_interval == 0:
                 self.save_model(epoch=epoch, model_name=f"epoch_{epoch}.pt")
                 model_unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
-                model_unwrapped.save_pretrained(self.path+f"_epoch_{epoch}")
+                # model_unwrapped.save_pretrained(self.path+f"_epoch_{epoch}")
                 wandb.log_model(path=self.path+f"_epoch_{epoch}")
                 
             # Log training progress
