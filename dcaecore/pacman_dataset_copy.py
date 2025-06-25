@@ -153,9 +153,12 @@ class CachedPacmanDataset(Dataset):
         
         print(f"Cache not found, downloading {self.num_samples} samples...")
         # Use streaming to efficiently download only needed samples
+        # Remove sample limit from split for dataset loading
+        clean_split = self.split.split('[')[0] if '[' in self.split else self.split
+
         streamed_dataset = load_dataset(
             self.dataset_name,
-            split=self.split,
+            split=clean_split,
             streaming=True,
             verification_mode=self.cfg.verification_mode
         )
