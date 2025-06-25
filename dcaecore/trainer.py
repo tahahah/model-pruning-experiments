@@ -134,8 +134,8 @@ class DCAETrainer(Trainer):
                         # Get the actual model from DDP wrapper if needed
                         model_unwrapped = model.module if hasattr(model, 'module') else model
                         
-                        encoded = model_unwrapped.encoder(images)
-                        reconstructed = model_unwrapped.decoder(encoded)
+                        encoded = model_unwrapped.encode(images)
+                        reconstructed = model_unwrapped.decode(encoded)
                         
                         # Calculate losses
                         recon_loss = F.mse_loss(reconstructed, images)
@@ -233,7 +233,7 @@ class DCAETrainer(Trainer):
                 for i in range(0, batch_size, 2):
                     chunk = images[i:i+2].cuda()
                     with torch.no_grad():
-                        encoded_chunks.append(model.encoder(chunk).cpu())
+                        encoded_chunks.append(model.encode(chunk).cpu())
                     del chunk
                     torch.cuda.empty_cache()
                 encoded = torch.cat(encoded_chunks, dim=0).cuda()
