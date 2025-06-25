@@ -239,10 +239,8 @@ class DCAETrainer(Trainer):
                 encoded = torch.cat(encoded_chunks, dim=0).cuda()
                 del encoded_chunks
             else:
-                encoded = model.encoder(images)
-            
-            # Decode
-            reconstructed = model.decoder(encoded)
+                encoded = model.encode(images)
+            reconstructed = model.decode(encoded).clamp(0, 1)           
             del encoded
             
             # Move images to same device and dtype as reconstructed
